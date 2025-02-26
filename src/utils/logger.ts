@@ -38,15 +38,12 @@ class LocalFileStorage implements StorageBackend {
             return '';
         }
         const content = fs.readFileSync(this.logFile, 'utf-8');
-        const targetDate = new Date(timestamp);
-
         return content
             .split('\n')
             .filter((line) => {
                 if (line.trim().length === 0) return false;
                 const logTimestamp = line.match(/\[(.*?)\]/)?.[1];
-                if (!logTimestamp) return false;
-                return new Date(logTimestamp) >= targetDate;
+                return logTimestamp && new Date(logTimestamp) >= new Date(timestamp);
             })
             .join('\n');
     }
@@ -56,14 +53,34 @@ class CloudWatchStorage implements StorageBackend {
     private client: CloudWatchLogsClient;
     private logGroupName: string;
     private logStreamName: string;
-    private sequenceToken: string | undefined;
 
     constructor() {
+        if (!process.env.AWS_REGION || !process.env.LOG_GROUP_NAME) {
+            console.warn('AWS_REGION or LOG_GROUP_NAME env variables are not set for CloudWatch logging');
+        }
+
         this.client = new CloudWatchLogsClient({
             region: process.env.AWS_REGION!,
         });
         this.logGroupName = process.env.LOG_GROUP_NAME!;
-        this.logStreamName = process.env.BALANCE_LOG_STREAM_NAME!;
+        this.logStreamName = `balances-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+
+        // Try to create log stream if it doesn't exist
+        this.createLogStreamIfNeeded().catch((e) => {
+            console.error('Failed to create CloudWatch log stream:', e);
+            sendAlert(AlertType.ERROR, `Failed to set up CloudWatch logging: ${e}`);
+        });
+    }
+
+    private async createLogStreamIfNeeded() {
+        try {
+            await this.client.send({
+                logGroupName: this.logGroupName,
+                logStreamName: this.logStreamName,
+            } as any);
+        } catch (error) {
+            console.error('Error creating CloudWatch log stream:', error);
+        }
     }
 
     async append(content: string): Promise<void> {
@@ -77,15 +94,13 @@ class CloudWatchStorage implements StorageBackend {
                         message: content,
                     },
                 ],
-                sequenceToken: this.sequenceToken,
             });
-
-            const response = await this.client.send(command);
-            this.sequenceToken = response.nextSequenceToken;
+            await this.client.send(command);
         } catch (error) {
             console.error('Error writing to CloudWatch:', error);
-            sendAlert(AlertType.ERROR, `Error on append: ${error}`);
-            throw error;
+            // Fall back to local file logging
+            const localStorage = new LocalFileStorage();
+            await localStorage.append(content);
         }
     }
 
@@ -95,36 +110,33 @@ class CloudWatchStorage implements StorageBackend {
                 logGroupName: this.logGroupName,
                 logStreamName: this.logStreamName,
                 limit: n,
-                startFromHead: false,
             });
-
             const response = await this.client.send(command);
             return (response.events || [])
-                .reverse()
                 .map((event) => event.message)
+                .filter((message): message is string => !!message)
                 .join('\n');
         } catch (error) {
             console.error('Error reading from CloudWatch:', error);
-            sendAlert(AlertType.ERROR, `Error on getLastNLines: ${error}`);
             return '';
         }
     }
 
     async getLogsFromTimestamp(timestamp: string): Promise<string> {
         try {
-            const targetDate = new Date(timestamp);
+            const startTime = new Date(timestamp).getTime();
             const command = new GetLogEventsCommand({
                 logGroupName: this.logGroupName,
                 logStreamName: this.logStreamName,
-                startTime: targetDate.getTime(),
-                startFromHead: false,
+                startTime,
             });
-
             const response = await this.client.send(command);
-            return (response.events || []).map((event) => event.message).join('\n');
+            return (response.events || [])
+                .map((event) => event.message)
+                .filter((message): message is string => !!message)
+                .join('\n');
         } catch (error) {
             console.error('Error reading from CloudWatch:', error);
-            sendAlert(AlertType.ERROR, `Error on getLogsFromTimestamp: ${error}`);
             return '';
         }
     }
@@ -134,8 +146,11 @@ export class BalanceLogger {
     private storage: StorageBackend;
 
     constructor() {
-        const env = process.env.NODE_ENV || 'development';
-        this.storage = env === 'development' ? new LocalFileStorage() : new CloudWatchStorage();
+        // Use the USE_CLOUD_WATCH_STORAGE env variable flag to determine storage backend
+        const useCloudWatch = process.env.USE_CLOUD_WATCH_STORAGE === 'true';
+        this.storage = useCloudWatch ? new CloudWatchStorage() : new LocalFileStorage();
+
+        console.log(`Initialized BalanceLogger with ${useCloudWatch ? 'CloudWatch' : 'LocalFile'} storage backend`);
     }
 
     public async logTotalWorth(solBalance: number, usdcBalance: number, solPriceInUsdc: number) {

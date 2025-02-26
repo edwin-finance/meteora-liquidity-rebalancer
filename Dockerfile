@@ -57,5 +57,5 @@ RUN mkdir -p logs
 # Set environment variables
 ENV NODE_ENV=production
 
-# Run the application
-CMD ["node", "dist/index.js"]
+# Run the example application
+CMD ["node", "dist/examples/example.js"]

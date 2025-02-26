@@ -8,6 +8,10 @@ import { JupiterService } from 'edwin-sdk';
 const METERORA_MAX_BINS_PER_SIDE = 34;
 const SOL_FEE_BUFFER = 0.1; // Keep 0.1 SOL for transaction fees
 
+/**
+ * MeteoraOptimizer class for managing and optimizing liquidity positions on Meteora.
+ * This class handles position creation, rebalancing, and optimization to maximize yield.
+ */
 export class MeteoraOptimizer {
     private workingPoolAddress: string | undefined;
     private workingPoolBinStep: number | undefined;
@@ -19,6 +23,11 @@ export class MeteoraOptimizer {
     private positionRangePerSide: number;
     private wallet: EdwinSolanaWallet;
 
+    /**
+     * Creates a new MeteoraOptimizer instance.
+     *
+     * @param wallet - An EdwinSolanaWallet instance for interacting with the Solana blockchain
+     */
     constructor(wallet: EdwinSolanaWallet) {
         this.meteora = new MeteoraProtocol(wallet);
         this.jupiter = new JupiterService(wallet);
@@ -28,7 +37,9 @@ export class MeteoraOptimizer {
     }
 
     /**
-     * Get the current wallet balances with a buffer for SOL to ensure enough for transaction fees
+     * Gets the current wallet balances with a buffer for SOL to ensure enough for transaction fees.
+     *
+     * @returns Object containing usable SOL and USDC balances
      */
     private async getUsableBalances(): Promise<{ sol: number; usdc: number }> {
         const solBalance = await this.wallet.getBalance();
