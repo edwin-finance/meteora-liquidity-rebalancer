@@ -1,0 +1,82 @@
+{
+  "name": "edwin-meteora-rebalancer",
+  "version": "0.1.0",
+  "description": "Meteora yield optimization bot, built with Edwin",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "pnpm format && tsup",
+    "dev": "nodemon --exec ts-node src/index.ts",
+    "test": "vitest",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"examples/**/*.ts\"",
+    "pre-commit": "lint-staged",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "init-redis": "chmod +x ./scripts/init_redis.sh && ./scripts/init_redis.sh",
+    "example": "ts-node examples/example.ts",
+    "dev:watch": "tsup --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.749.0",
+    "@meteora-ag/dlmm": "^1.3.11",
+    "dotenv": "^16.4.7",
+    "edwin-sdk": "0.4.0",
+    "redis": "^4.7.0",
+    "ts-node": "^10.9.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.13.0",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "@typescript-eslint/eslint-plugin": "^8.23.0",
+    "@typescript-eslint/parser": "^8.23.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "lint-staged": "^15.0.2",
+    "nodemon": "^3.1.9",
+    "prettier": "^3.0.3",
+    "rimraf": "^5.0.1",
+    "ts-jest": "^29.2.5",
+    "tsup": "^8.0.1",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
+  },
+  "keywords": [
+    "defi",
+    "yield-optimization",
+    "blockchain",
+    "solana",
+    "meteora",
+    "dlmm",
+    "liquidity",
+    "positioning",
+    "rebalancing",
+    "web3"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edwin-finance/aiymx-agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/edwin-finance/edwin-meteora-rebalancer/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
