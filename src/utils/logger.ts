@@ -1,4 +1,9 @@
-import { CloudWatchLogsClient, PutLogEventsCommand, GetLogEventsCommand } from '@aws-sdk/client-cloudwatch-logs';
+import {
+    CloudWatchLogsClient,
+    PutLogEventsCommand,
+    GetLogEventsCommand,
+    CreateLogStreamCommand,
+} from '@aws-sdk/client-cloudwatch-logs';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sendAlert, AlertType } from './alerts';
@@ -74,10 +79,11 @@ class CloudWatchStorage implements StorageBackend {
 
     private async createLogStreamIfNeeded() {
         try {
-            await this.client.send({
+            const command = new CreateLogStreamCommand({
                 logGroupName: this.logGroupName,
                 logStreamName: this.logStreamName,
-            } as any);
+            });
+            await this.client.send(command);
         } catch (error) {
             console.error('Error creating CloudWatch log stream:', error);
         }
