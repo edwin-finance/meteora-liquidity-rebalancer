@@ -6,7 +6,7 @@ import { MeteoraProtocol } from 'edwin-sdk';
 import { JupiterService } from 'edwin-sdk';
 
 const METERORA_MAX_BINS_PER_SIDE = 34;
-const SOL_FEE_BUFFER = 0.1; // Keep 0.1 SOL for transaction fees
+const NATIVE_TOKEN_FEE_BUFFER = Number(process.env.NATIVE_TOKEN_FEE_BUFFER || 0.1); // Keep buffer for transaction and position creation fees
 
 /**
  * MeteoraOptimizer class for managing and optimizing liquidity positions on Meteora.
@@ -22,34 +22,57 @@ export class MeteoraOptimizer {
     private balanceLogger: BalanceLogger;
     private positionRangePerSide: number;
     private wallet: EdwinSolanaWallet;
+    private assetA: string;
+    private assetB: string;
+    private isAssetANative: boolean;
+    private isAssetBNative: boolean;
 
     /**
      * Creates a new MeteoraOptimizer instance.
      *
      * @param wallet - An EdwinSolanaWallet instance for interacting with the Solana blockchain
+     * @param assetA - The first asset in the trading pair (e.g., 'sol')
+     * @param assetB - The second asset in the trading pair (e.g., 'usdc')
      */
-    constructor(wallet: EdwinSolanaWallet) {
+    constructor(wallet: EdwinSolanaWallet, assetA: string, assetB: string) {
         this.meteora = new MeteoraProtocol(wallet);
         this.jupiter = new JupiterService(wallet);
         this.wallet = wallet;
         this.balanceLogger = new BalanceLogger();
         this.positionRangePerSide = Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE);
+        this.assetA = assetA;
+        this.assetB = assetB;
+        this.isAssetANative = assetA.toLowerCase() === 'sol';
+        this.isAssetBNative = assetB.toLowerCase() === 'sol';
+
+        // Ensure both assets are not SOL
+        if (this.isAssetANative && this.isAssetBNative) {
+            throw new Error('Both assets cannot be SOL');
+        }
     }
 
     /**
-     * Gets the current wallet balances with a buffer for SOL to ensure enough for transaction fees.
+     * Gets the current wallet balances with a buffer for native token to ensure enough for transaction fees.
      *
-     * @returns Object containing usable SOL and USDC balances
+     * @returns Object containing usable assetA and assetB balances
      */
-    private async getUsableBalances(): Promise<{ sol: number; usdc: number }> {
-        const solBalance = await this.wallet.getBalance();
-        const usdcBalance = await this.wallet.getBalance('usdc');
+    private async getUsableBalances(): Promise<{ [asset: string]: number }> {
+        const assetABalance = await this.wallet.getBalance(this.assetA);
+        const assetBBalance = await this.wallet.getBalance(this.assetB);
 
-        // Return balances with a buffer for SOL
-        return {
-            sol: Math.max(0, solBalance - SOL_FEE_BUFFER),
-            usdc: usdcBalance,
-        };
+        // Return balances with a buffer for native token
+        const result: { [key: string]: number } = {};
+
+        // Apply buffer to whichever asset is SOL
+        result[this.assetA] = this.isAssetANative
+            ? Math.max(0, assetABalance - NATIVE_TOKEN_FEE_BUFFER)
+            : assetABalance;
+
+        result[this.assetB] = this.isAssetBNative
+            ? Math.max(0, assetBBalance - NATIVE_TOKEN_FEE_BUFFER)
+            : assetBBalance;
+
+        return result;
     }
 
     /**
@@ -79,8 +102,8 @@ export class MeteoraOptimizer {
         try {
             const pools = await this.retry(() =>
                 this.meteora.getPools({
-                    asset: 'sol',
-                    assetB: 'usdc',
+                    asset: this.assetA,
+                    assetB: this.assetB,
                 })
             );
             const minBinStep = Math.ceil((this.positionRangePerSide * 10000) / METERORA_MAX_BINS_PER_SIDE);
@@ -132,9 +155,32 @@ export class MeteoraOptimizer {
         }
     }
 
+    private async verifyNativeTokenBuffer(): Promise<boolean> {
+        // Get native SOL balance directly (without accounting for the buffer)
+        const nativeBalance = await this.wallet.getBalance();
+        if (nativeBalance < NATIVE_TOKEN_FEE_BUFFER) {
+            console.error(
+                `Insufficient native token balance for transaction and position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
+            );
+            await sendAlert(
+                AlertType.ERROR,
+                `Insufficient native token balance for transaction and position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
+            );
+            return false;
+        }
+        return true;
+    }
+
     async loadInitialState(): Promise<boolean> {
         const balances = await this.getUsableBalances();
-        console.log('Initial balances from wallet: ', balances.sol, balances.usdc);
+        console.log(
+            `Initial balances from wallet: ${balances[this.assetA]} ${this.assetA}, ${balances[this.assetB]} ${this.assetB}`
+        );
+
+        // Verify we have enough native token for transaction fees
+        if (!(await this.verifyNativeTokenBuffer())) {
+            return false;
+        }
 
         const positions = await this.retry(() => this.meteora.getPositions());
 
@@ -186,8 +232,13 @@ export class MeteoraOptimizer {
     private async rebalancePosition() {
         try {
             // Get current balances from wallet
-            const { sol: positionSol, usdc: positionUsdc } = await this.getUsableBalances();
-            console.log(`Current position balances before rebalance: ${positionSol} SOL, ${positionUsdc} USDC`);
+            const balances = await this.getUsableBalances();
+            const assetAAmount = balances[this.assetA];
+            const assetBAmount = balances[this.assetB];
+
+            console.log(
+                `Current position balances before rebalance: ${assetAAmount} ${this.assetA}, ${assetBAmount} ${this.assetB}`
+            );
 
             // Get current price from Meteora pool (with retry)
             if (!this.workingPoolAddress) {
@@ -204,68 +255,63 @@ export class MeteoraOptimizer {
             }
 
             const currentPrice = Number(activeBin.pricePerToken);
-            console.log('Current price of SOL/USDC: ', currentPrice);
+            console.log(`Current price of ${this.assetA}/${this.assetB}: ${currentPrice}`);
 
-            // Calculate total value in USD
-            const totalValueInUsd = positionSol * currentPrice + positionUsdc;
-            console.log('Total portfolio value in USD: ', totalValueInUsd);
+            // Calculate total value in terms of assetB
+            const totalValueInAssetB = assetAAmount * currentPrice + assetBAmount;
 
             // Calculate target balances (50/50)
-            const targetValueInUsd = totalValueInUsd / 2;
-            const targetSolBalance = targetValueInUsd / currentPrice;
-            const targetUsdcBalance = targetValueInUsd;
+            const targetValueInAssetB = totalValueInAssetB / 2;
+            const targetAssetABalance = targetValueInAssetB / currentPrice;
+            const targetAssetBBalance = targetValueInAssetB;
 
-            console.log(`Target balances: ${targetSolBalance} SOL, ${targetUsdcBalance} USDC`);
+            console.log(
+                `Target balances: ${targetAssetABalance} ${this.assetA}, ${targetAssetBBalance} ${this.assetB}`
+            );
 
             // Calculate how much to swap
-            if (positionSol > targetSolBalance) {
-                // Need to sell SOL for USDC
-                const solToSwap = positionSol - targetSolBalance;
-                console.log(`Need to swap ${solToSwap.toFixed(6)} SOL for USDC`);
-
-                if (solToSwap < 0.01) {
-                    console.log('Amount too small to swap, skipping');
-                    return;
-                }
+            if (assetAAmount > targetAssetABalance) {
+                // Need to sell assetA for assetB
+                const assetAToSwap = assetAAmount - targetAssetABalance;
+                console.log(`Need to swap ${assetAToSwap.toFixed(6)} ${this.assetA} for ${this.assetB}`);
 
                 // Execute the swap
-                const outputUsdcAmount = await this.retry(() =>
+                const outputAssetBAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: 'sol',
-                        assetB: 'usdc',
-                        amount: solToSwap.toString(),
+                        asset: this.assetA,
+                        assetB: this.assetB,
+                        amount: assetAToSwap.toString(),
                     })
                 );
                 this.balanceLogger.logAction(
-                    `Swapped ${solToSwap.toFixed(6)} SOL for ${outputUsdcAmount.toFixed(6)} USDC to rebalance`
+                    `Swapped ${assetAToSwap.toFixed(6)} ${this.assetA} for ${outputAssetBAmount.toFixed(6)} ${this.assetB} to rebalance`
                 );
-            } else if (positionUsdc > targetUsdcBalance) {
-                // Need to sell USDC for SOL
-                const usdcToSwap = positionUsdc - targetUsdcBalance;
-                console.log(`Need to swap ${usdcToSwap.toFixed(6)} USDC for SOL`);
-
-                if (usdcToSwap < 0.01) {
-                    console.log('Amount too small to swap, skipping');
-                    return;
-                }
+            } else if (assetBAmount > targetAssetBBalance) {
+                // Need to sell assetB for assetA
+                const assetBToSwap = assetBAmount - targetAssetBBalance;
+                console.log(`Need to swap ${assetBToSwap.toFixed(6)} ${this.assetB} for ${this.assetA}`);
 
                 // Execute the swap
-                const outputSolAmount = await this.retry(() =>
+                const outputAssetAAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: 'usdc',
-                        assetB: 'sol',
-                        amount: usdcToSwap.toString(),
+                        asset: this.assetB,
+                        assetB: this.assetA,
+                        amount: assetBToSwap.toString(),
                     })
                 );
 
                 this.balanceLogger.logAction(
-                    `Swapped ${usdcToSwap.toFixed(6)} USDC for ${outputSolAmount.toFixed(6)} SOL to rebalance`
+                    `Swapped ${assetBToSwap.toFixed(6)} ${this.assetB} for ${outputAssetAAmount.toFixed(6)} ${this.assetA} to rebalance`
                 );
             }
 
             this.balanceLogger.logCurrentPrice(Number(activeBin.pricePerToken));
-            const balances = await this.getUsableBalances();
-            this.balanceLogger.logBalances(balances.sol, balances.usdc, 'Total worth after rebalance');
+            const newBalances = await this.getUsableBalances();
+            this.balanceLogger.logBalances(
+                newBalances[this.assetA],
+                newBalances[this.assetB],
+                'Total worth after rebalance'
+            );
 
             // 5 seconds delay for the wallet catch up
             await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -276,6 +322,11 @@ export class MeteoraOptimizer {
     }
 
     private async addLiquidity() {
+        // Verify we have enough native token for transaction fees before adding liquidity
+        if (!(await this.verifyNativeTokenBuffer())) {
+            throw new Error('Insufficient native token balance to add liquidity');
+        }
+
         const balances = await this.getUsableBalances();
         const meteoraRangeInterval = Math.ceil(
             (this.positionRangePerSide * 10000) / (this.workingPoolBinStep as number)
@@ -284,12 +335,12 @@ export class MeteoraOptimizer {
         await this.retry(() =>
             this.meteora.addLiquidity({
                 poolAddress: this.workingPoolAddress as string,
-                amount: balances.sol.toString(),
-                amountB: balances.usdc.toString(),
+                amount: balances[this.assetA].toString(),
+                amountB: balances[this.assetB].toString(),
                 rangeInterval: Math.min(meteoraRangeInterval, METERORA_MAX_BINS_PER_SIDE),
             })
         );
-        this.balanceLogger.logBalances(balances.sol, balances.usdc, 'Liquidity added to pool');
+        this.balanceLogger.logBalances(balances[this.assetA], balances[this.assetB], 'Liquidity added to pool');
 
         console.log('Collecting new opened position lower and upper bin ids..');
         let positions = await this.retry(() =>
@@ -321,12 +372,12 @@ export class MeteoraOptimizer {
                 poolAddress: this.workingPoolAddress as string,
             })
         );
-        const positionSol = liquidityRemoved[0];
-        const positionUsdc = liquidityRemoved[1];
-        const rewardsSol = feesClaimed[0];
-        const rewardsUsdc = feesClaimed[1];
-        this.balanceLogger.logBalances(positionSol, positionUsdc, 'Liquidity removed from pool');
-        this.balanceLogger.logBalances(rewardsSol, rewardsUsdc, 'Rewards claimed');
+        const positionAssetA = liquidityRemoved[0];
+        const positionAssetB = liquidityRemoved[1];
+        const rewardsAssetA = feesClaimed[0];
+        const rewardsAssetB = feesClaimed[1];
+        this.balanceLogger.logBalances(positionAssetA, positionAssetB, 'Liquidity removed from pool');
+        this.balanceLogger.logBalances(rewardsAssetA, rewardsAssetB, 'Rewards claimed');
 
         // Wait for the wallet to update with the new balances
         await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -334,8 +385,8 @@ export class MeteoraOptimizer {
         const newBalances = await this.getUsableBalances();
         this.balanceLogger.logAction(
             `Withdrew liquidity and rewards from pool ${this.workingPoolAddress}: ${
-                newBalances.sol
-            } SOL, ${newBalances.usdc} USDC`
+                newBalances[this.assetA]
+            } ${this.assetA}, ${newBalances[this.assetB]} ${this.assetB}`
         );
     }
 
@@ -356,6 +407,17 @@ export class MeteoraOptimizer {
                 this.balanceLogger.logAction(
                     `Detected that pool active bin ${activeBin.binId} is out of position bin range: ${this.currLowerBinId} to ${this.currUpperBinId}`
                 );
+
+                // Verify we have enough native token for transaction fees before rebalancing
+                if (!(await this.verifyNativeTokenBuffer())) {
+                    console.error('Skipping rebalance due to insufficient native token balance');
+                    await sendAlert(
+                        AlertType.WARNING,
+                        `Skipping position rebalance due to insufficient native token balance`
+                    );
+                    return false;
+                }
+
                 await this.removeLiquidity();
                 await this.rebalancePosition();
                 await this.addLiquidity();
