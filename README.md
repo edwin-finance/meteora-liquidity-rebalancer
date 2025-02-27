@@ -30,7 +30,19 @@ Required environment variables:
 
 - `SOLANA_PRIVATE_KEY`: Your Solana wallet private key
 - `SOLANA_RPC_URL`: RPC URL for Solana
-- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g. 0.1 for ±10%)
+- `HELIUS_API_KEY`: Helius API key for enhanced Solana data access
+- `ASSET_A`: First asset in trading pair (e.g., 'sol')
+- `ASSET_B`: Second asset in trading pair (e.g., 'usdc')
+- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g., 0.0001 for a narrow range)
+- `NATIVE_TOKEN_FEE_BUFFER`: Amount of SOL to reserve for transaction fees (default: 0.1)
+- `TELEGRAM_BOT_TOKEN`: Telegram bot token for alerts
+- `TELEGRAM_CHAT_ID`: Telegram chat ID for receiving alerts
+- `REDIS_URL`: Redis server URL
+- `REDIS_NAMESPACE`: Namespace for Redis keys
+- `USE_CLOUD_WATCH_STORAGE`: Enable CloudWatch logging (true/false)
+- `AWS_REGION`: AWS region for CloudWatch
+- `LOG_GROUP_NAME`: CloudWatch log group name
+- `BALANCE_LOG_STREAM_NAME`: CloudWatch log stream for balance tracking
 
 ## Usage
 
@@ -51,7 +63,11 @@ import { MeteoraOptimizer } from 'edwin-meteora-rebalancer';
 import { EdwinSolanaWallet } from 'edwin-sdk';
 
 const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-const optimizer = new MeteoraOptimizer(wallet);
+const optimizer = new MeteoraOptimizer(
+  wallet, 
+  process.env.ASSET_A, 
+  process.env.ASSET_B
+);
 
 // Initialize the optimizer
 await optimizer.loadInitialState();
