@@ -155,7 +155,7 @@ export class MeteoraOptimizer {
         }
     }
 
-    private async verifyNativeTokenBuffer(): Promise<boolean> {
+    private async verifyNativeTokenBuffer() {
         // Get native SOL balance directly (without accounting for the buffer)
         const nativeBalance = await this.wallet.getBalance();
         if (nativeBalance < NATIVE_TOKEN_FEE_BUFFER) {
@@ -166,9 +166,8 @@ export class MeteoraOptimizer {
                 AlertType.ERROR,
                 `Insufficient native token balance for transaction and position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
             );
-            return false;
+            throw new Error('Insufficient native token balance for transaction and position creation fees');
         }
-        return true;
     }
 
     async loadInitialState(): Promise<boolean> {
@@ -178,9 +177,7 @@ export class MeteoraOptimizer {
         );
 
         // Verify we have enough native token for transaction fees
-        if (!(await this.verifyNativeTokenBuffer())) {
-            return false;
-        }
+        await this.verifyNativeTokenBuffer();
 
         const positions = await this.retry(() => this.meteora.getPositions());
 
@@ -323,9 +320,7 @@ export class MeteoraOptimizer {
 
     private async addLiquidity() {
         // Verify we have enough native token for transaction fees before adding liquidity
-        if (!(await this.verifyNativeTokenBuffer())) {
-            throw new Error('Insufficient native token balance to add liquidity');
-        }
+        await this.verifyNativeTokenBuffer();
 
         const balances = await this.getUsableBalances();
         const meteoraRangeInterval = Math.ceil(
@@ -408,17 +403,8 @@ export class MeteoraOptimizer {
                     `Detected that pool active bin ${activeBin.binId} is out of position bin range: ${this.currLowerBinId} to ${this.currUpperBinId}`
                 );
 
-                // Verify we have enough native token for transaction fees before rebalancing
-                if (!(await this.verifyNativeTokenBuffer())) {
-                    console.error('Skipping rebalance due to insufficient native token balance');
-                    await sendAlert(
-                        AlertType.WARNING,
-                        `Skipping position rebalance due to insufficient native token balance`
-                    );
-                    return false;
-                }
-
                 await this.removeLiquidity();
+                await this.verifyNativeTokenBuffer();
                 await this.rebalancePosition();
                 await this.addLiquidity();
                 return true;

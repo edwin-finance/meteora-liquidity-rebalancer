@@ -63,7 +63,15 @@ async function main() {
 
 main().catch(async (error) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Unexpected error:', error);
 
+    if (errorMessage.includes('Insufficient native token balance for transaction and position creation fees')) {
+        console.error(
+            'Not enough SOL balance for transaction fees. Please fund the wallet with more SOL and try again.'
+        );
+        await cleanupAndExit(1);
+        return;
+    }
+
+    console.error('Unexpected error:', error);
     await cleanupAndExit(1);
 });
