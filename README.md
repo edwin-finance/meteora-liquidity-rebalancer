@@ -33,12 +33,14 @@ Required environment variables:
 - `HELIUS_API_KEY`: Helius API key for enhanced Solana data access
 - `ASSET_A`: First asset in trading pair (e.g., 'sol')
 - `ASSET_B`: Second asset in trading pair (e.g., 'usdc')
-- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g., 0.0001 for a narrow range)
+- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g., 0.05 for ±5%)
 - `NATIVE_TOKEN_FEE_BUFFER`: Amount of SOL to reserve for transaction fees (default: 0.1)
+
+# Telegram alerts (optional)
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token for alerts
 - `TELEGRAM_CHAT_ID`: Telegram chat ID for receiving alerts
-- `REDIS_URL`: Redis server URL
-- `REDIS_NAMESPACE`: Namespace for Redis keys
+
+# CloudWatch logging (optional)
 - `USE_CLOUD_WATCH_STORAGE`: Enable CloudWatch logging (true/false)
 - `AWS_REGION`: AWS region for CloudWatch
 - `LOG_GROUP_NAME`: CloudWatch log group name

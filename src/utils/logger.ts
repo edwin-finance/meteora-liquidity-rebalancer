@@ -60,15 +60,15 @@ class CloudWatchStorage implements StorageBackend {
     private logStreamName: string;
 
     constructor() {
-        if (!process.env.AWS_REGION || !process.env.LOG_GROUP_NAME) {
-            console.warn('AWS_REGION or LOG_GROUP_NAME env variables are not set for CloudWatch logging');
+        if (!process.env.AWS_REGION || !process.env.LOG_GROUP_NAME || !process.env.BALANCE_LOG_STREAM_NAME) {
+            console.warn('AWS_REGION, LOG_GROUP_NAME, or BALANCE_LOG_STREAM_NAME env variables are not set for CloudWatch logging');
         }
 
         this.client = new CloudWatchLogsClient({
             region: process.env.AWS_REGION!,
         });
         this.logGroupName = process.env.LOG_GROUP_NAME!;
-        this.logStreamName = `balances-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        this.logStreamName = process.env.BALANCE_LOG_STREAM_NAME!;
 
         // Try to create log stream if it doesn't exist
         this.createLogStreamIfNeeded().catch((e) => {
