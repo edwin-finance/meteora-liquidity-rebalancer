@@ -66,7 +66,7 @@ main().catch(async (error) => {
 
     if (errorMessage.includes('Insufficient native token balance for transaction and position creation fees')) {
         console.error(
-            'Not enough SOL balance for transaction fees. Please fund the wallet with more SOL and try again.'
+            'Not enough native token balance for transaction and position creation fees. Please fund the wallet with more native token and try again.'
         );
         await cleanupAndExit(1);
         return;

@@ -61,7 +61,9 @@ class CloudWatchStorage implements StorageBackend {
 
     constructor() {
         if (!process.env.AWS_REGION || !process.env.LOG_GROUP_NAME || !process.env.BALANCE_LOG_STREAM_NAME) {
-            console.warn('AWS_REGION, LOG_GROUP_NAME, or BALANCE_LOG_STREAM_NAME env variables are not set for CloudWatch logging');
+            console.warn(
+                'AWS_REGION, LOG_GROUP_NAME, or BALANCE_LOG_STREAM_NAME env variables are not set for CloudWatch logging'
+            );
         }
 
         this.client = new CloudWatchLogsClient({

@@ -6,7 +6,8 @@ import { MeteoraProtocol } from 'edwin-sdk';
 import { JupiterService } from 'edwin-sdk';
 
 const METERORA_MAX_BINS_PER_SIDE = 34;
-const NATIVE_TOKEN_FEE_BUFFER = Number(process.env.NATIVE_TOKEN_FEE_BUFFER || 0.1); // Keep buffer for transaction and position creation fees
+const NATIVE_TOKEN_FEE_BUFFER = Number(process.env.NATIVE_TOKEN_FEE_BUFFER || 0.1); // Keep buffer for position creation fees
+const NATIVE_TOKEN_MIN_BALANCE = Number(process.env.NATIVE_TOKEN_MIN_BALANCE || 0.01); // Minimum balance to operate for covering transaction fees
 
 /**
  * MeteoraOptimizer class for managing and optimizing liquidity positions on Meteora.
@@ -155,18 +156,10 @@ export class MeteoraOptimizer {
         }
     }
 
-    private async verifyNativeTokenBuffer() {
-        // Get native SOL balance directly (without accounting for the buffer)
+    private async verifyNativeTokenBalanceForFees() {
         const nativeBalance = await this.wallet.getBalance();
-        if (nativeBalance < NATIVE_TOKEN_FEE_BUFFER) {
-            console.error(
-                `Insufficient native token balance for transaction and position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
-            );
-            await sendAlert(
-                AlertType.ERROR,
-                `Insufficient native token balance for transaction and position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
-            );
-            throw new Error('Insufficient native token balance for transaction and position creation fees');
+        if (nativeBalance < NATIVE_TOKEN_MIN_BALANCE) {
+            await sendAlert(AlertType.WARNING, 'Low native token balance detected');
         }
     }
 
@@ -175,9 +168,6 @@ export class MeteoraOptimizer {
         console.log(
             `Initial balances from wallet: ${balances[this.assetA]} ${this.assetA}, ${balances[this.assetB]} ${this.assetB}`
         );
-
-        // Verify we have enough native token for transaction fees
-        await this.verifyNativeTokenBuffer();
 
         const positions = await this.retry(() => this.meteora.getPositions());
 
@@ -196,6 +186,7 @@ export class MeteoraOptimizer {
                 'with bin step: ',
                 this.workingPoolBinStep
             );
+            await this.verifyNativeTokenBalanceForFees();
             await this.rebalancePosition();
             await this.addLiquidity();
             return true;
@@ -318,10 +309,23 @@ export class MeteoraOptimizer {
         }
     }
 
-    private async addLiquidity() {
-        // Verify we have enough native token for transaction fees before adding liquidity
-        await this.verifyNativeTokenBuffer();
+    private async verifyNativeTokenBufferForPositions() {
+        // Get native SOL balance directly (without accounting for the buffer)
+        const nativeBalance = await this.wallet.getBalance();
+        if (nativeBalance < NATIVE_TOKEN_FEE_BUFFER) {
+            console.error(
+                `Insufficient native token balance for position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
+            );
+            await sendAlert(
+                AlertType.ERROR,
+                `Insufficient native token balance for position creation fees: ${nativeBalance} SOL. Minimum required: ${NATIVE_TOKEN_FEE_BUFFER} SOL`
+            );
+            throw new Error('Insufficient native token balance for position creation fees');
+        }
+    }
 
+    private async addLiquidity() {
+        await this.verifyNativeTokenBufferForPositions();
         const balances = await this.getUsableBalances();
         const meteoraRangeInterval = Math.ceil(
             (this.positionRangePerSide * 10000) / (this.workingPoolBinStep as number)
@@ -404,7 +408,7 @@ export class MeteoraOptimizer {
                 );
 
                 await this.removeLiquidity();
-                await this.verifyNativeTokenBuffer();
+                await this.verifyNativeTokenBufferForPositions();
                 await this.rebalancePosition();
                 await this.addLiquidity();
                 return true;
