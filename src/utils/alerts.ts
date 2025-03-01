@@ -6,6 +6,7 @@ export enum AlertType {
     LOSS = 'LOSS',
     PERFORMANCE_REPORT = 'PERFORMANCE_REPORT',
     ERROR = 'ERROR',
+    WARNING = 'WARNING',
 }
 
 export async function sendAlert(type: AlertType, message: string) {
