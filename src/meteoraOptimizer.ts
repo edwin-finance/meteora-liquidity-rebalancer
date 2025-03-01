@@ -58,9 +58,16 @@ export class MeteoraOptimizer {
      * @returns Object containing usable assetA and assetB balances
      */
     private async getUsableBalances(): Promise<{ [asset: string]: number }> {
-        const assetABalance = await this.wallet.getBalance(this.assetA);
-        const assetBBalance = await this.wallet.getBalance(this.assetB);
-
+        const assetAMintAddress = await this.wallet.getTokenAddress(this.assetA);
+        const assetBMintAddress = await this.wallet.getTokenAddress(this.assetB);
+        if (!assetAMintAddress) {
+            throw new Error(`Can't find mint address for asset A: ${this.assetA}`);
+        }
+        if (!assetBMintAddress) {
+            throw new Error(`Can't find mint address for asset B: ${this.assetB}`);
+        }
+        const assetABalance = await this.wallet.getBalance(assetAMintAddress);
+        const assetBBalance = await this.wallet.getBalance(assetBMintAddress);
         // Return balances with a buffer for native token
         const result: { [key: string]: number } = {};
 
