@@ -96,4 +96,4 @@ pnpm test
 
 ## License
 
-MIT
+GPL
