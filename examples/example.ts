@@ -24,8 +24,17 @@ async function main() {
     }
     const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
 
-    const assetABalance = await wallet.getBalance(process.env.ASSET_A);
-    const assetBBalance = await wallet.getBalance(process.env.ASSET_B);
+
+    const assetAMintAddress = await wallet.getTokenAddress(process.env.ASSET_A);
+    const assetBMintAddress = await wallet.getTokenAddress(process.env.ASSET_B);
+    if (!assetAMintAddress) {
+        throw new Error("Can't find mint address for asset A");
+    }
+    if (!assetBMintAddress) {
+        throw new Error("Can't find mint address for asset B");
+    }
+    const assetABalance = await wallet.getBalance(assetAMintAddress);
+    const assetBBalance = await wallet.getBalance(assetBMintAddress);
     console.log(`Supplied wallet total ${process.env.ASSET_A} balance: ${assetABalance}`);
     console.log(`Supplied wallet total ${process.env.ASSET_B} balance: ${assetBBalance}`);
 
