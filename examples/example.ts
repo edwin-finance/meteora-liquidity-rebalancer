@@ -24,10 +24,10 @@ async function main() {
     }
     const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
 
-    const solBalance = await wallet.getBalance();
-    const usdcBalance = await wallet.getBalance('usdc');
-    console.log(`Supplied wallet total SOL balance: ${solBalance}`);
-    console.log(`Supplied wallet total USDC balance: ${usdcBalance}`);
+    const assetABalance = await wallet.getBalance(process.env.ASSET_A);
+    const assetBBalance = await wallet.getBalance(process.env.ASSET_B);
+    console.log(`Supplied wallet total ${process.env.ASSET_A} balance: ${assetABalance}`);
+    console.log(`Supplied wallet total ${process.env.ASSET_B} balance: ${assetBBalance}`);
 
     // Set up cleanup on process termination
     process.on('SIGINT', () => cleanupAndExit());
