@@ -161,23 +161,16 @@ export class BalanceLogger {
         console.log(`Initialized BalanceLogger with ${useCloudWatch ? 'CloudWatch' : 'LocalFile'} storage backend`);
     }
 
-    public async logTotalWorth(solBalance: number, usdcBalance: number, solPriceInUsdc: number) {
-        const totalWorth = solBalance * solPriceInUsdc + usdcBalance;
+    public async logBalances(assetABalance: number, assetBBalance: number, prefix: string) {
         const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] Total worth: ${totalWorth} USDC\n`;
-        await this.storage.append(logEntry);
-    }
-
-    public async logBalances(solBalance: number, usdcBalance: number, prefix: string) {
-        const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] ${prefix}  -  SOL: ${solBalance}, USDC: ${usdcBalance}\n`;
+        const logEntry = `[${timestamp}] ${prefix}  -  Asset A: ${assetABalance}, Asset B: ${assetBBalance}\n`;
         console.log(logEntry);
         await this.storage.append(logEntry);
     }
 
     public async logCurrentPrice(price: number) {
         const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] Current price: 1 SOL = ${price} USDC\n`;
+        const logEntry = `[${timestamp}] Current price: 1 Asset A = ${price} Asset B\n`;
         await this.storage.append(logEntry);
     }
 
