@@ -10,8 +10,15 @@ import { sendAlert, AlertType } from './alerts';
 
 interface StorageBackend {
     append(content: string): Promise<void>;
-    getLastNLines(n: number): Promise<string>;
-    getLogsFromTimestamp(timestamp: string): Promise<string>;
+    getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null>;
+}
+
+function extractBalanceFromLog(logMessage: string): [number, number] | null {
+    const match = logMessage.match(/Asset A: ([\d.]+), Asset B: ([\d.]+)/);
+    if (match) {
+        return [parseFloat(match[1]), parseFloat(match[2])];
+    }
+    return null;
 }
 
 class LocalFileStorage implements StorageBackend {
@@ -29,28 +36,22 @@ class LocalFileStorage implements StorageBackend {
         fs.appendFileSync(this.logFile, content);
     }
 
-    async getLastNLines(n: number): Promise<string> {
+    async getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null> {
         if (!fs.existsSync(this.logFile)) {
-            return '';
+            return null;
         }
-        const content = fs.readFileSync(this.logFile, 'utf-8');
-        const lines = content.split('\n').filter((line) => line.trim().length > 0);
-        return lines.slice(-n).join('\n');
-    }
 
-    async getLogsFromTimestamp(timestamp: string): Promise<string> {
-        if (!fs.existsSync(this.logFile)) {
-            return '';
-        }
         const content = fs.readFileSync(this.logFile, 'utf-8');
-        return content
+        const lastBalanceLine = content
             .split('\n')
+            .filter((line) => line.includes('Asset A:') && line.includes(prefix))
             .filter((line) => {
-                if (line.trim().length === 0) return false;
                 const logTimestamp = line.match(/\[(.*?)\]/)?.[1];
-                return logTimestamp && new Date(logTimestamp) >= new Date(timestamp);
+                return logTimestamp && new Date(logTimestamp) <= timestamp;
             })
-            .join('\n');
+            .pop();
+
+        return lastBalanceLine ? extractBalanceFromLog(lastBalanceLine) : null;
     }
 }
 
@@ -72,7 +73,6 @@ class CloudWatchStorage implements StorageBackend {
         this.logGroupName = process.env.LOG_GROUP_NAME!;
         this.logStreamName = process.env.BALANCE_LOG_STREAM_NAME!;
 
-        // Try to create log stream if it doesn't exist
         this.createLogStreamIfNeeded().catch((e) => {
             console.error('Failed to create CloudWatch log stream:', e);
             sendAlert(AlertType.ERROR, `Failed to set up CloudWatch logging: ${e}`);
@@ -98,61 +98,45 @@ class CloudWatchStorage implements StorageBackend {
     }
 
     async append(content: string): Promise<void> {
-        try {
-            const command = new PutLogEventsCommand({
-                logGroupName: this.logGroupName,
-                logStreamName: this.logStreamName,
-                logEvents: [
-                    {
-                        timestamp: Date.now(),
-                        message: content,
-                    },
-                ],
-            });
-            await this.client.send(command);
-        } catch (error) {
-            console.error('Error writing to CloudWatch:', error);
-            // Fall back to local file logging
-            const localStorage = new LocalFileStorage();
-            await localStorage.append(content);
-        }
+        const command = new PutLogEventsCommand({
+            logGroupName: this.logGroupName,
+            logStreamName: this.logStreamName,
+            logEvents: [
+                {
+                    timestamp: Date.now(),
+                    message: content,
+                },
+            ],
+        });
+        await this.client.send(command);
     }
 
-    async getLastNLines(n: number): Promise<string> {
-        try {
-            const command = new GetLogEventsCommand({
-                logGroupName: this.logGroupName,
-                logStreamName: this.logStreamName,
-                limit: n,
-            });
-            const response = await this.client.send(command);
-            return (response.events || [])
-                .map((event) => event.message)
-                .filter((message): message is string => !!message)
-                .join('\n');
-        } catch (error) {
-            console.error('Error reading from CloudWatch:', error);
-            return '';
-        }
-    }
+    async getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null> {
+        const command = new GetLogEventsCommand({
+            logGroupName: this.logGroupName,
+            logStreamName: this.logStreamName,
+            endTime: timestamp.getTime(),
+            limit: 1000,
+        });
 
-    async getLogsFromTimestamp(timestamp: string): Promise<string> {
-        try {
-            const startTime = new Date(timestamp).getTime();
-            const command = new GetLogEventsCommand({
-                logGroupName: this.logGroupName,
-                logStreamName: this.logStreamName,
-                startTime,
-            });
-            const response = await this.client.send(command);
-            return (response.events || [])
-                .map((event) => event.message)
-                .filter((message): message is string => !!message)
-                .join('\n');
-        } catch (error) {
-            console.error('Error reading from CloudWatch:', error);
-            return '';
+        const response = await this.client.send(command);
+
+        const matchingLogs = (response.events || [])
+            .filter((event) => {
+                const message = event.message || '';
+                return (
+                    message.includes('Asset A:') &&
+                    message.includes(prefix) &&
+                    (event.timestamp || 0) <= timestamp.getTime()
+                );
+            })
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+        if (matchingLogs.length > 0 && matchingLogs[0].message) {
+            return extractBalanceFromLog(matchingLogs[0].message);
         }
+
+        return null;
     }
 }
 
@@ -160,10 +144,8 @@ export class BalanceLogger {
     private storage: StorageBackend;
 
     constructor() {
-        // Use the USE_CLOUD_WATCH_STORAGE env variable flag to determine storage backend
         const useCloudWatch = process.env.USE_CLOUD_WATCH_STORAGE === 'true';
         this.storage = useCloudWatch ? new CloudWatchStorage() : new LocalFileStorage();
-
         console.log(`Initialized BalanceLogger with ${useCloudWatch ? 'CloudWatch' : 'LocalFile'} storage backend`);
     }
 
@@ -193,13 +175,10 @@ export class BalanceLogger {
         console.log(logEntry);
     }
 
-    public async getLastNLines(n: number): Promise<string> {
-        console.log('Getting last N lines');
-        return await this.storage.getLastNLines(n);
-    }
-
-    public async getLogsFromTimestamp(timestamp: string): Promise<string> {
-        console.log('Getting logs from timestamp');
-        return await this.storage.getLogsFromTimestamp(timestamp);
+    public async getLastBalanceByPrefix(
+        prefix: string,
+        timestamp: Date = new Date()
+    ): Promise<[number, number] | null> {
+        return await this.storage.getLastBalanceByPrefix(prefix, timestamp);
     }
 }
