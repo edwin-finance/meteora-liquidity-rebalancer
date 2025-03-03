@@ -404,8 +404,8 @@ export class MeteoraRebalancer {
                 );
 
                 await this.removeLiquidity();
-                await this.verifyNativeTokenBufferForPositions();
                 await this.rebalancePosition();
+                await this.verifyNativeTokenBufferForPositions();
                 await this.addLiquidity();
                 return true;
             } else {

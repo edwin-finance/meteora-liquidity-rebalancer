@@ -21,7 +21,7 @@ async function main() {
         if (!process.env.METEORA_POOL_ADDRESS) {
             throw new Error('METEORA_POOL_ADDRESS is not set');
         }
-        
+
         // Set up cleanup on process termination
         process.on('SIGINT', () => cleanupAndExit());
         process.on('SIGTERM', () => cleanupAndExit());
@@ -29,7 +29,7 @@ async function main() {
         console.log('Initializing Meteora Rebalancer...');
         const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
         const meteoraRebalancer = new MeteoraRebalancer(wallet, process.env.METEORA_POOL_ADDRESS);
-        
+
         console.log('Loading initial state...');
         const changedPosition = await meteoraRebalancer.loadInitialState();
         console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
