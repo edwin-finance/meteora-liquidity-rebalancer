@@ -159,7 +159,10 @@ export class BalanceLogger {
         console.log(logEntry);
     }
 
-    public async getLastBalanceByPrefix(prefix: string, timestamp: Date = new Date()): Promise<[number, number] | null> {
+    public async getLastBalanceByPrefix(
+        prefix: string,
+        timestamp: Date = new Date()
+    ): Promise<[number, number] | null> {
         return await this.storage.getLastBalanceByPrefix(prefix, timestamp);
     }
 }
