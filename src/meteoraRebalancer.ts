@@ -77,7 +77,7 @@ export class MeteoraRebalancer {
      * Helper function that will retry the given async function a few times.
      * If all attempts fail, the last error is thrown.
      */
-    private async retry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1000): Promise<T> {
+    private async retry<T>(fn: () => Promise<T>, retries = 5, delayMs = 1000): Promise<T> {
         let lastError: unknown;
         for (let attempt = 0; attempt < retries; attempt++) {
             try {
@@ -326,21 +326,11 @@ export class MeteoraRebalancer {
         );
 
         console.log('Collecting new opened position lower and upper bin ids..');
-        let positions = await this.retry(() =>
+        const positions = await this.retry(() =>
             this.meteora.getPositionsFromPool({
-                poolAddress: this.poolAddress as string,
+                poolAddress: this.poolAddress,
             })
         );
-
-        // Retry if positions array is empty
-        if (positions.length === 0) {
-            console.log('No positions found, retrying...');
-            positions = await this.retry(() =>
-                this.meteora.getPositionsFromPool({
-                    poolAddress: this.poolAddress as string,
-                })
-            );
-        }
 
         const position = positions[0].positionData;
         this.currLowerBinId = position.lowerBinId;
