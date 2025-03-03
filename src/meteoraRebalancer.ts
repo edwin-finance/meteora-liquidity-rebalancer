@@ -329,7 +329,9 @@ export class MeteoraRebalancer {
         const positions = await this.retry(() =>
             this.meteora.getPositionsFromPool({
                 poolAddress: this.poolAddress,
-            })
+            }), 
+            10,
+            10000
         );
 
         const position = positions[0].positionData;
