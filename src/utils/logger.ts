@@ -80,11 +80,21 @@ class CloudWatchStorage implements StorageBackend {
     }
 
     private async createLogStreamIfNeeded() {
-        const command = new CreateLogStreamCommand({
-            logGroupName: this.logGroupName,
-            logStreamName: this.logStreamName,
-        });
-        await this.client.send(command);
+        try {
+            const command = new CreateLogStreamCommand({
+                logGroupName: this.logGroupName,
+                logStreamName: this.logStreamName,
+            });
+            await this.client.send(command);
+            console.log(`Created CloudWatch log stream: ${this.logStreamName}`);
+        } catch (error: any) {
+            // ResourceAlreadyExistsException is expected and not an error
+            if (error.name === 'ResourceAlreadyExistsException') {
+                console.log(`Using existing CloudWatch log stream: ${this.logStreamName}`);
+            } else {
+                console.error('Error creating CloudWatch log stream:', error);
+            }
+        }
     }
 
     async append(content: string): Promise<void> {
@@ -139,16 +149,22 @@ export class BalanceLogger {
         console.log(`Initialized BalanceLogger with ${useCloudWatch ? 'CloudWatch' : 'LocalFile'} storage backend`);
     }
 
-    public async logBalances(assetABalance: number, assetBBalance: number, prefix: string) {
+    public async logBalances(
+        assetABalance: number,
+        assetBBalance: number,
+        prefix: string,
+        assetASymbol: string = 'Asset A',
+        assetBSymbol: string = 'Asset B'
+    ) {
         const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] ${prefix}  -  Asset A: ${assetABalance}, Asset B: ${assetBBalance}\n`;
+        const logEntry = `[${timestamp}] ${prefix}  -  ${assetASymbol}: ${assetABalance}, ${assetBSymbol}: ${assetBBalance}\n`;
         console.log(logEntry);
         await this.storage.append(logEntry);
     }
 
-    public async logCurrentPrice(price: number) {
+    public async logCurrentPrice(price: number, assetASymbol: string = 'Asset A', assetBSymbol: string = 'Asset B') {
         const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] Current price: 1 Asset A = ${price} Asset B\n`;
+        const logEntry = `[${timestamp}] Current price: 1 ${assetASymbol} = ${price} ${assetBSymbol}\n`;
         await this.storage.append(logEntry);
     }
 
