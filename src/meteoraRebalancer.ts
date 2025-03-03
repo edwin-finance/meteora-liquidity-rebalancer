@@ -153,7 +153,7 @@ export class MeteoraRebalancer {
         }
         const balances = await this.getUsableBalances();
         console.log(
-            `Initial balances from wallet: ${balances[this.poolDetails.assetASymbol]} ${this.poolDetails.assetASymbol}, ${balances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
+            `Initial usable balances: ${balances[this.poolDetails.assetASymbol]} ${this.poolDetails.assetASymbol}, ${balances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
         );
 
         console.log('Using specified pool: ', this.poolAddress, 'with bin step: ', this.poolDetails.binStep);
@@ -224,7 +224,7 @@ export class MeteoraRebalancer {
             const targetAssetBBalance = targetValueInAssetB;
 
             console.log(
-                `Target balances: ${targetAssetABalance} ${this.poolDetails.assetASymbol}, ${targetAssetBBalance} ${this.poolDetails.assetBSymbol}`
+                `Target usable balances: ${targetAssetABalance} ${this.poolDetails.assetASymbol}, ${targetAssetBBalance} ${this.poolDetails.assetBSymbol}`
             );
 
             // Calculate how much to swap
@@ -276,7 +276,7 @@ export class MeteoraRebalancer {
             this.balanceLogger.logBalances(
                 newBalances[this.poolDetails.assetASymbol],
                 newBalances[this.poolDetails.assetBSymbol],
-                'Total worth after rebalance',
+                'Total usable balances after rebalancing',
                 this.poolDetails.assetASymbol,
                 this.poolDetails.assetBSymbol
             );
