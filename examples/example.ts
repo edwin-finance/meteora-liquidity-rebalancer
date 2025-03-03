@@ -24,7 +24,6 @@ async function main() {
     }
     const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
 
-
     const assetAMintAddress = await wallet.getTokenAddress(process.env.ASSET_A);
     const assetBMintAddress = await wallet.getTokenAddress(process.env.ASSET_B);
     if (!assetAMintAddress) {
