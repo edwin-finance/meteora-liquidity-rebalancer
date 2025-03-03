@@ -38,6 +38,12 @@ export class MeteoraOptimizer {
         this.jupiter = new JupiterService(wallet);
         this.wallet = wallet;
         this.balanceLogger = new BalanceLogger();
+        if (
+            !process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE ||
+            isNaN(Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE))
+        ) {
+            throw new Error('METEORA_POSITION_RANGE_PER_SIDE_RELATIVE must be set and be a valid number');
+        }
         this.positionRangePerSide = Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE);
         this.poolAddress = poolAddress;
     }
@@ -118,8 +124,8 @@ export class MeteoraOptimizer {
             }
             return {
                 binStep: data.bin_step,
-                assetAMintAddress: data.asset_a_mint,
-                assetBMintAddress: data.asset_b_mint,
+                assetAMintAddress: data.mint_x,
+                assetBMintAddress: data.mint_y,
                 assetASymbol: assetASymbol,
                 assetBSymbol: assetBSymbol,
             };
@@ -141,14 +147,15 @@ export class MeteoraOptimizer {
     }
 
     async loadInitialState(): Promise<boolean> {
-        const balances = await this.getUsableBalances();
-        console.log(
-            `Initial balances from wallet: ${balances[this.poolDetails.assetASymbol]} ${this.poolDetails.assetASymbol}, ${balances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
-        );
         this._poolDetails = await this.getPoolDetails(this.poolAddress);
         if (!this._poolDetails) {
             throw new Error('Failed to get pool details for pool: ' + this.poolAddress);
         }
+        const balances = await this.getUsableBalances();
+        console.log(
+            `Initial balances from wallet: ${balances[this.poolDetails.assetASymbol]} ${this.poolDetails.assetASymbol}, ${balances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
+        );
+
         console.log('Using specified pool: ', this.poolAddress, 'with bin step: ', this.poolDetails.binStep);
 
         const positions = await this.retry(() => this.meteora.getPositionsFromPool({ poolAddress: this.poolAddress }));
@@ -231,8 +238,8 @@ export class MeteoraOptimizer {
                 // Execute the swap
                 const outputAssetBAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: this.poolDetails.assetAMintAddress,
-                        assetB: this.poolDetails.assetBMintAddress,
+                        inputMint: this.poolDetails.assetAMintAddress,
+                        outputMint: this.poolDetails.assetBMintAddress,
                         amount: assetAToSwap.toString(),
                     })
                 );
@@ -249,8 +256,8 @@ export class MeteoraOptimizer {
                 // Execute the swap
                 const outputAssetAAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: this.poolDetails.assetBMintAddress,
-                        assetB: this.poolDetails.assetAMintAddress,
+                        inputMint: this.poolDetails.assetBMintAddress,
+                        outputMint: this.poolDetails.assetAMintAddress,
                         amount: assetBToSwap.toString(),
                     })
                 );
@@ -260,12 +267,18 @@ export class MeteoraOptimizer {
                 );
             }
 
-            this.balanceLogger.logCurrentPrice(Number(activeBin.pricePerToken));
+            this.balanceLogger.logCurrentPrice(
+                Number(activeBin.pricePerToken),
+                this.poolDetails.assetASymbol,
+                this.poolDetails.assetBSymbol
+            );
             const newBalances = await this.getUsableBalances();
             this.balanceLogger.logBalances(
                 newBalances[this.poolDetails.assetASymbol],
                 newBalances[this.poolDetails.assetBSymbol],
-                'Total worth after rebalance'
+                'Total worth after rebalance',
+                this.poolDetails.assetASymbol,
+                this.poolDetails.assetBSymbol
             );
 
             // 5 seconds delay for the wallet catch up
@@ -307,7 +320,9 @@ export class MeteoraOptimizer {
         this.balanceLogger.logBalances(
             balances[this.poolDetails.assetASymbol],
             balances[this.poolDetails.assetBSymbol],
-            'Liquidity added to pool'
+            'Liquidity added to pool',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
         );
 
         console.log('Collecting new opened position lower and upper bin ids..');
@@ -344,8 +359,20 @@ export class MeteoraOptimizer {
         const positionAssetB = liquidityRemoved[1];
         const rewardsAssetA = feesClaimed[0];
         const rewardsAssetB = feesClaimed[1];
-        this.balanceLogger.logBalances(positionAssetA, positionAssetB, 'Liquidity removed from pool');
-        this.balanceLogger.logBalances(rewardsAssetA, rewardsAssetB, 'Rewards claimed');
+        this.balanceLogger.logBalances(
+            positionAssetA, 
+            positionAssetB, 
+            'Liquidity removed from pool',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
+        );
+        this.balanceLogger.logBalances(
+            rewardsAssetA, 
+            rewardsAssetB, 
+            'Rewards claimed',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
+        );
 
         // Wait for the wallet to update with the new balances
         await new Promise((resolve) => setTimeout(resolve, 5000));

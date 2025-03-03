@@ -22,13 +22,16 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Test Tweet Generator",
+            "name": "Test Meteora Optimizer",
             "runtimeExecutable": "pnpm",
             "runtimeArgs": [
                 "vitest",
                 "run",
                 "tests/meteoraOptimizer.test.ts"
             ],
+            "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+            "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+            "sourceMaps": true,
             "skipFiles": [
                 "<node_internals>/**"
             ],

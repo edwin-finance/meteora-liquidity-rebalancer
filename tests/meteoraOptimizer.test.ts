@@ -10,7 +10,7 @@ dotenv.config();
 const requiredEnvVars = [
   'SOLANA_PRIVATE_KEY',
   'SOLANA_RPC_URL',
-  'METEORA_POSITION_RANGE_PER_SIDE_RELATIVE',
+  'METEORA_POSITION_RANGE_PER_SIDE_RELATIVE'
 ];
 
 // Define pools for testing
@@ -72,7 +72,7 @@ describe('MeteoraOptimizer Real-world Tests', () => {
     });
   });
 
-  describe('Different Asset Pairs', () => {
+  describe('EDWIN/SOL Asset Pair', () => {
     it('should initialize with EDWIN/SOL pool', async () => {
       if (skipTests) return;
 
