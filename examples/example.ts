@@ -16,34 +16,15 @@ async function main() {
     if (!process.env.SOLANA_PRIVATE_KEY) {
         throw new Error('SOLANA_PRIVATE_KEY is not set');
     }
-    if (!process.env.ASSET_A) {
-        throw new Error('ASSET_A is not set');
+    if (!process.env.METEORA_POOL_ADDRESS) {
+        throw new Error('METEORA_POOL_ADDRESS is not set');
     }
-    if (!process.env.ASSET_B) {
-        throw new Error('ASSET_B is not set');
-    }
-    const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-
-
-    const assetAMintAddress = await wallet.getTokenAddress(process.env.ASSET_A);
-    const assetBMintAddress = await wallet.getTokenAddress(process.env.ASSET_B);
-    if (!assetAMintAddress) {
-        throw new Error("Can't find mint address for asset A");
-    }
-    if (!assetBMintAddress) {
-        throw new Error("Can't find mint address for asset B");
-    }
-    const assetABalance = await wallet.getBalance(assetAMintAddress);
-    const assetBBalance = await wallet.getBalance(assetBMintAddress);
-    console.log(`Supplied wallet total ${process.env.ASSET_A} balance: ${assetABalance}`);
-    console.log(`Supplied wallet total ${process.env.ASSET_B} balance: ${assetBBalance}`);
-
     // Set up cleanup on process termination
     process.on('SIGINT', () => cleanupAndExit());
     process.on('SIGTERM', () => cleanupAndExit());
 
-    const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.ASSET_A, process.env.ASSET_B);
-
+    const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
+    const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.METEORA_POOL_ADDRESS);
     const changedPosition = await meteoraOptimizer.loadInitialState();
     console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
 
