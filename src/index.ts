@@ -1,2 +1,2 @@
-export { MeteoraOptimizer } from './meteoraOptimizer';
+export { MeteoraRebalancer } from './meteoraRebalancer';
 export { BalanceLogger } from './utils/logger';

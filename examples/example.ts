@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { MeteoraOptimizer } from '../src/index';
+import { MeteoraRebalancer } from '../src/index';
 import { EdwinSolanaWallet } from 'edwin-sdk';
 
 function delay(ms: number) {
@@ -13,61 +13,58 @@ async function cleanupAndExit(code = 0) {
 }
 
 async function main() {
-    if (!process.env.SOLANA_PRIVATE_KEY) {
-        throw new Error('SOLANA_PRIVATE_KEY is not set');
-    }
-    if (!process.env.ASSET_A) {
-        throw new Error('ASSET_A is not set');
-    }
-    if (!process.env.ASSET_B) {
-        throw new Error('ASSET_B is not set');
-    }
-    const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-
-
-    const assetAMintAddress = await wallet.getTokenAddress(process.env.ASSET_A);
-    const assetBMintAddress = await wallet.getTokenAddress(process.env.ASSET_B);
-    if (!assetAMintAddress) {
-        throw new Error("Can't find mint address for asset A");
-    }
-    if (!assetBMintAddress) {
-        throw new Error("Can't find mint address for asset B");
-    }
-    const assetABalance = await wallet.getBalance(assetAMintAddress);
-    const assetBBalance = await wallet.getBalance(assetBMintAddress);
-    console.log(`Supplied wallet total ${process.env.ASSET_A} balance: ${assetABalance}`);
-    console.log(`Supplied wallet total ${process.env.ASSET_B} balance: ${assetBBalance}`);
-
-    // Set up cleanup on process termination
-    process.on('SIGINT', () => cleanupAndExit());
-    process.on('SIGTERM', () => cleanupAndExit());
-
-    const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.ASSET_A, process.env.ASSET_B);
-
-    const changedPosition = await meteoraOptimizer.loadInitialState();
-    console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
-
-    async function runOptimizationLoop() {
-        try {
-            const changedPosition = await meteoraOptimizer.optimize();
-            if (changedPosition) {
-                console.log('Position was rebalanced');
-            }
-        } catch (error) {
-            // Only handle expected errors here, let unexpected errors bubble up
-            if (error instanceof Error && error.message.includes('Bad request')) {
-                console.error('Expected error running optimizeMeteora:', error);
-            } else {
-                throw error;
-            }
+    try {
+        // Validate required environment variables
+        if (!process.env.SOLANA_PRIVATE_KEY) {
+            throw new Error('SOLANA_PRIVATE_KEY is not set');
+        }
+        if (!process.env.METEORA_POOL_ADDRESS) {
+            throw new Error('METEORA_POOL_ADDRESS is not set');
         }
 
-        await delay(10 * 1000);
-        await runOptimizationLoop();
-    }
+        // Set up cleanup on process termination
+        process.on('SIGINT', () => cleanupAndExit());
+        process.on('SIGTERM', () => cleanupAndExit());
 
-    // Start the optimization loop 10 seconds after startup
-    setTimeout(runOptimizationLoop, 10 * 1000);
+        console.log('Initializing Meteora Rebalancer...');
+        const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
+        const meteoraRebalancer = new MeteoraRebalancer(wallet, process.env.METEORA_POOL_ADDRESS);
+
+        console.log('Loading initial state...');
+        const changedPosition = await meteoraRebalancer.loadInitialState();
+        console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
+
+        // Define rebalance loop as a separate function
+        async function runRebalanceLoop() {
+            try {
+                console.log('Running rebalance cycle...');
+                const changedPosition = await meteoraRebalancer.rebalance();
+                if (changedPosition) {
+                    console.log('Position was rebalanced');
+                }
+            } catch (error) {
+                // Handle expected errors
+                if (error instanceof Error) {
+                    if (error.message.includes('Bad request')) {
+                        console.error('Expected error running rebalance:', error.message);
+                    } else {
+                        throw error; // Re-throw unexpected errors
+                    }
+                } else {
+                    throw error;
+                }
+            }
+            await delay(10 * 1000);
+            await runRebalanceLoop();
+        }
+
+        // Start the rebalance loop after a delay
+        console.log('Starting rebalance loop in 10 seconds...');
+        setTimeout(runRebalanceLoop, 10 * 1000);
+    } catch (error) {
+        console.error('Error in main function:', error);
+        await cleanupAndExit(1);
+    }
 }
 
 main().catch(async (error) => {

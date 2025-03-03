@@ -1,21 +1,27 @@
 import { BinLiquidity } from '@meteora-ag/dlmm';
 import { BalanceLogger } from './utils/logger';
 import { AlertType, sendAlert } from './utils/alerts';
-import { EdwinSolanaWallet } from 'edwin-sdk';
-import { MeteoraProtocol } from 'edwin-sdk';
-import { JupiterService } from 'edwin-sdk';
+import { EdwinSolanaWallet, JupiterService, MeteoraProtocol } from 'edwin-sdk';
 
 const METERORA_MAX_BINS_PER_SIDE = 34;
 const NATIVE_TOKEN_FEE_BUFFER = Number(process.env.NATIVE_TOKEN_FEE_BUFFER || 0.1); // Keep buffer for position creation fees
 const NATIVE_TOKEN_MIN_BALANCE = Number(process.env.NATIVE_TOKEN_MIN_BALANCE || 0.01); // Minimum balance to operate for covering transaction fees
 
+type PoolDetails = {
+    binStep: number;
+    assetAMintAddress: string;
+    assetBMintAddress: string;
+    assetASymbol: string;
+    assetBSymbol: string;
+};
+
 /**
- * MeteoraOptimizer class for managing and optimizing liquidity positions on Meteora.
- * This class handles position creation, rebalancing, and optimization to maximize yield.
+ * MeteoraRebalancer class for managing and rebalancing liquidity positions on Meteora.
+ * This class handles position rebalancing to maintain a 50/50 balance between the two assets.
  */
-export class MeteoraOptimizer {
-    private workingPoolAddress: string | undefined;
-    private workingPoolBinStep: number | undefined;
+export class MeteoraRebalancer {
+    private poolAddress: string;
+    private _poolDetails: PoolDetails | undefined;
     private currLowerBinId: number = 0;
     private currUpperBinId: number = 0;
     private meteora: MeteoraProtocol;
@@ -23,33 +29,23 @@ export class MeteoraOptimizer {
     private balanceLogger: BalanceLogger;
     private positionRangePerSide: number;
     private wallet: EdwinSolanaWallet;
-    private assetA: string;
-    private assetB: string;
-    private isAssetANative: boolean;
-    private isAssetBNative: boolean;
 
     /**
-     * Creates a new MeteoraOptimizer instance.
-     *
-     * @param wallet - An EdwinSolanaWallet instance for interacting with the Solana blockchain
-     * @param assetA - The first asset in the trading pair (e.g., 'sol')
-     * @param assetB - The second asset in the trading pair (e.g., 'usdc')
+     * Creates a new MeteoraRebalancer instance.
      */
-    constructor(wallet: EdwinSolanaWallet, assetA: string, assetB: string) {
+    public constructor(wallet: EdwinSolanaWallet, poolAddress: string) {
         this.meteora = new MeteoraProtocol(wallet);
         this.jupiter = new JupiterService(wallet);
         this.wallet = wallet;
         this.balanceLogger = new BalanceLogger();
-        this.positionRangePerSide = Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE);
-        this.assetA = assetA;
-        this.assetB = assetB;
-        this.isAssetANative = assetA.toLowerCase() === 'sol';
-        this.isAssetBNative = assetB.toLowerCase() === 'sol';
-
-        // Ensure both assets are not SOL
-        if (this.isAssetANative && this.isAssetBNative) {
-            throw new Error('Both assets cannot be SOL');
+        if (
+            !process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE ||
+            isNaN(Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE))
+        ) {
+            throw new Error('METEORA_POSITION_RANGE_PER_SIDE_RELATIVE must be set and be a valid number');
         }
+        this.positionRangePerSide = Number(process.env.METEORA_POSITION_RANGE_PER_SIDE_RELATIVE);
+        this.poolAddress = poolAddress;
     }
 
     /**
@@ -58,25 +54,19 @@ export class MeteoraOptimizer {
      * @returns Object containing usable assetA and assetB balances
      */
     private async getUsableBalances(): Promise<{ [asset: string]: number }> {
-        const assetAMintAddress = await this.wallet.getTokenAddress(this.assetA);
-        const assetBMintAddress = await this.wallet.getTokenAddress(this.assetB);
-        if (!assetAMintAddress) {
-            throw new Error(`Can't find mint address for asset A: ${this.assetA}`);
-        }
-        if (!assetBMintAddress) {
-            throw new Error(`Can't find mint address for asset B: ${this.assetB}`);
-        }
-        const assetABalance = await this.wallet.getBalance(assetAMintAddress);
-        const assetBBalance = await this.wallet.getBalance(assetBMintAddress);
+        const assetABalance = await this.wallet.getBalance(this.poolDetails.assetAMintAddress);
+        const assetBBalance = await this.wallet.getBalance(this.poolDetails.assetBMintAddress);
         // Return balances with a buffer for native token
         const result: { [key: string]: number } = {};
+        const isAssetANative = this.poolDetails.assetASymbol.toLowerCase() === 'sol';
+        const isAssetBNative = this.poolDetails.assetBSymbol.toLowerCase() === 'sol';
 
         // Apply buffer to whichever asset is SOL
-        result[this.assetA] = this.isAssetANative
+        result[this.poolDetails.assetASymbol] = isAssetANative
             ? Math.max(0, assetABalance - NATIVE_TOKEN_FEE_BUFFER)
             : assetABalance;
 
-        result[this.assetB] = this.isAssetBNative
+        result[this.poolDetails.assetBSymbol] = isAssetBNative
             ? Math.max(0, assetBBalance - NATIVE_TOKEN_FEE_BUFFER)
             : assetBBalance;
 
@@ -106,39 +96,14 @@ export class MeteoraOptimizer {
         throw lastError;
     }
 
-    private async getGoodPool(): Promise<[string | undefined, number | undefined]> {
-        try {
-            const pools = await this.retry(() =>
-                this.meteora.getPools({
-                    asset: this.assetA,
-                    assetB: this.assetB,
-                })
-            );
-            const minBinStep = Math.ceil((this.positionRangePerSide * 10000) / METERORA_MAX_BINS_PER_SIDE);
-            const filteredPools = pools.filter((pool) => pool.bin_step >= minBinStep);
-            const pool = filteredPools.reduce((maxPool: any, currentPool: any) => {
-                if (!maxPool || currentPool.trade_volume_24h > maxPool.trade_volume_24h) {
-                    return currentPool;
-                }
-                return maxPool;
-            }, null);
-
-            if (!pool) {
-                console.log('No pool found with minimum bin step of', minBinStep);
-                return [undefined, undefined];
-            }
-            return [pool.address, pool.bin_step];
-        } catch (error) {
-            console.error('Error in getGoodPool:', error);
-            await sendAlert(
-                AlertType.ERROR,
-                `In getGoodPool: ${error instanceof Error ? error.message : String(error)}`
-            );
-            return [undefined, undefined];
+    private get poolDetails(): PoolDetails {
+        if (!this._poolDetails) {
+            throw new Error('Pool details not initialized. Make sure to call MeteoraRebalancer.loadInitialState()');
         }
+        return this._poolDetails;
     }
 
-    private async getBinStep(poolAddress: string): Promise<number | undefined> {
+    private async getPoolDetails(poolAddress: string): Promise<PoolDetails | undefined> {
         try {
             const response = await fetch(`https://dlmm-api.meteora.ag/pair/${poolAddress}`, {
                 method: 'GET',
@@ -152,12 +117,23 @@ export class MeteoraOptimizer {
             }
 
             const data = await response.json();
-            return data.bin_step;
+            // Parse pool name (e.g. "SOL-USDC") into asset names
+            const [assetASymbol, assetBSymbol] = data.name.split('-');
+            if (!assetASymbol || !assetBSymbol) {
+                throw new Error(`Invalid pool name format: ${data.name}`);
+            }
+            return {
+                binStep: data.bin_step,
+                assetAMintAddress: data.mint_x,
+                assetBMintAddress: data.mint_y,
+                assetASymbol: assetASymbol,
+                assetBSymbol: assetBSymbol,
+            };
         } catch (error) {
-            console.error('Error in getBinStep:', error);
+            console.error('Error in getPoolDetails:', error);
             await sendAlert(
                 AlertType.ERROR,
-                `In getBinStep: ${error instanceof Error ? error.message : String(error)}`
+                `In getPoolDetails: ${error instanceof Error ? error.message : String(error)}`
             );
             return undefined;
         }
@@ -171,50 +147,35 @@ export class MeteoraOptimizer {
     }
 
     async loadInitialState(): Promise<boolean> {
+        this._poolDetails = await this.getPoolDetails(this.poolAddress);
+        if (!this._poolDetails) {
+            throw new Error('Failed to get pool details for pool: ' + this.poolAddress);
+        }
         const balances = await this.getUsableBalances();
         console.log(
-            `Initial balances from wallet: ${balances[this.assetA]} ${this.assetA}, ${balances[this.assetB]} ${this.assetB}`
+            `Initial balances from wallet: ${balances[this.poolDetails.assetASymbol]} ${this.poolDetails.assetASymbol}, ${balances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
         );
 
-        const positions = await this.retry(() => this.meteora.getPositions());
+        console.log('Using specified pool: ', this.poolAddress, 'with bin step: ', this.poolDetails.binStep);
 
-        if (positions.size === 0) {
-            console.log('No positions found');
-            const [poolAddress, binStep] = await this.getGoodPool();
-            if (!poolAddress) {
-                console.error('Failed to find a good pool.');
-                return false;
-            }
-            this.workingPoolAddress = poolAddress;
-            this.workingPoolBinStep = binStep;
-            console.log(
-                'Found pool to work with: ',
-                this.workingPoolAddress,
-                'with bin step: ',
-                this.workingPoolBinStep
-            );
+        const positions = await this.retry(() => this.meteora.getPositionsFromPool({ poolAddress: this.poolAddress }));
+
+        if (positions.length === 0) {
+            console.log('No open positions found for pool: ', this.poolAddress);
             await this.verifyNativeTokenBalanceForFees();
             await this.rebalancePosition();
             await this.addLiquidity();
             return true;
         } else {
-            const position = positions.values().next().value;
-            if (!position) {
-                throw new Error('No valid position found.');
-            }
-            this.workingPoolAddress = position.publicKey.toString();
-            this.workingPoolBinStep = await this.getBinStep(this.workingPoolAddress);
-            if (!this.workingPoolBinStep) {
-                throw new Error('Failed to get bin step for pool: ' + this.workingPoolAddress);
-            }
-            const positionData = position.lbPairPositionsData[0].positionData;
+            const position = positions[0];
+            const positionData = position.positionData;
             this.currLowerBinId = positionData.lowerBinId;
             this.currUpperBinId = positionData.upperBinId;
             console.log(
                 'Found existing position in pool: ',
-                this.workingPoolAddress,
+                this.poolAddress,
                 'with bin step: ',
-                this.workingPoolBinStep,
+                this.poolDetails.binStep,
                 'and bin range: ',
                 this.currLowerBinId,
                 'to',
@@ -228,20 +189,20 @@ export class MeteoraOptimizer {
         try {
             // Get current balances from wallet
             const balances = await this.getUsableBalances();
-            const assetAAmount = balances[this.assetA];
-            const assetBAmount = balances[this.assetB];
+            const assetAAmount = balances[this.poolDetails.assetASymbol];
+            const assetBAmount = balances[this.poolDetails.assetBSymbol];
 
             console.log(
-                `Current position balances before rebalance: ${assetAAmount} ${this.assetA}, ${assetBAmount} ${this.assetB}`
+                `Current position balances before rebalance: ${assetAAmount} ${this.poolDetails.assetASymbol}, ${assetBAmount} ${this.poolDetails.assetBSymbol}`
             );
 
             // Get current price from Meteora pool (with retry)
-            if (!this.workingPoolAddress) {
+            if (!this.poolAddress) {
                 throw new Error('No working pool address found');
             }
             const activeBin: BinLiquidity = await this.retry(() =>
                 this.meteora.getActiveBin({
-                    poolAddress: this.workingPoolAddress as string,
+                    poolAddress: this.poolAddress as string,
                 })
             );
 
@@ -250,7 +211,9 @@ export class MeteoraOptimizer {
             }
 
             const currentPrice = Number(activeBin.pricePerToken);
-            console.log(`Current price of ${this.assetA}/${this.assetB}: ${currentPrice}`);
+            console.log(
+                `Current price of ${this.poolDetails.assetASymbol}/${this.poolDetails.assetBSymbol}: ${currentPrice}`
+            );
 
             // Calculate total value in terms of assetB
             const totalValueInAssetB = assetAAmount * currentPrice + assetBAmount;
@@ -261,51 +224,61 @@ export class MeteoraOptimizer {
             const targetAssetBBalance = targetValueInAssetB;
 
             console.log(
-                `Target balances: ${targetAssetABalance} ${this.assetA}, ${targetAssetBBalance} ${this.assetB}`
+                `Target balances: ${targetAssetABalance} ${this.poolDetails.assetASymbol}, ${targetAssetBBalance} ${this.poolDetails.assetBSymbol}`
             );
 
             // Calculate how much to swap
             if (assetAAmount > targetAssetABalance) {
                 // Need to sell assetA for assetB
                 const assetAToSwap = assetAAmount - targetAssetABalance;
-                console.log(`Need to swap ${assetAToSwap.toFixed(6)} ${this.assetA} for ${this.assetB}`);
+                console.log(
+                    `Need to swap ${assetAToSwap.toFixed(6)} ${this.poolDetails.assetASymbol} for ${this.poolDetails.assetBSymbol}`
+                );
 
                 // Execute the swap
                 const outputAssetBAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: this.assetA,
-                        assetB: this.assetB,
+                        inputMint: this.poolDetails.assetAMintAddress,
+                        outputMint: this.poolDetails.assetBMintAddress,
                         amount: assetAToSwap.toString(),
                     })
                 );
                 this.balanceLogger.logAction(
-                    `Swapped ${assetAToSwap.toFixed(6)} ${this.assetA} for ${outputAssetBAmount.toFixed(6)} ${this.assetB} to rebalance`
+                    `Swapped ${assetAToSwap.toFixed(6)} ${this.poolDetails.assetASymbol} for ${outputAssetBAmount.toFixed(6)} ${this.poolDetails.assetBSymbol} to rebalance`
                 );
             } else if (assetBAmount > targetAssetBBalance) {
                 // Need to sell assetB for assetA
                 const assetBToSwap = assetBAmount - targetAssetBBalance;
-                console.log(`Need to swap ${assetBToSwap.toFixed(6)} ${this.assetB} for ${this.assetA}`);
+                console.log(
+                    `Need to swap ${assetBToSwap.toFixed(6)} ${this.poolDetails.assetBSymbol} for ${this.poolDetails.assetASymbol}`
+                );
 
                 // Execute the swap
                 const outputAssetAAmount = await this.retry(() =>
                     this.jupiter.swap({
-                        asset: this.assetB,
-                        assetB: this.assetA,
+                        inputMint: this.poolDetails.assetBMintAddress,
+                        outputMint: this.poolDetails.assetAMintAddress,
                         amount: assetBToSwap.toString(),
                     })
                 );
 
                 this.balanceLogger.logAction(
-                    `Swapped ${assetBToSwap.toFixed(6)} ${this.assetB} for ${outputAssetAAmount.toFixed(6)} ${this.assetA} to rebalance`
+                    `Swapped ${assetBToSwap.toFixed(6)} ${this.poolDetails.assetBSymbol} for ${outputAssetAAmount.toFixed(6)} ${this.poolDetails.assetASymbol} to rebalance`
                 );
             }
 
-            this.balanceLogger.logCurrentPrice(Number(activeBin.pricePerToken));
+            this.balanceLogger.logCurrentPrice(
+                Number(activeBin.pricePerToken),
+                this.poolDetails.assetASymbol,
+                this.poolDetails.assetBSymbol
+            );
             const newBalances = await this.getUsableBalances();
             this.balanceLogger.logBalances(
-                newBalances[this.assetA],
-                newBalances[this.assetB],
-                'Total worth after rebalance'
+                newBalances[this.poolDetails.assetASymbol],
+                newBalances[this.poolDetails.assetBSymbol],
+                'Total worth after rebalance',
+                this.poolDetails.assetASymbol,
+                this.poolDetails.assetBSymbol
             );
 
             // 5 seconds delay for the wallet catch up
@@ -334,24 +307,28 @@ export class MeteoraOptimizer {
     private async addLiquidity() {
         await this.verifyNativeTokenBufferForPositions();
         const balances = await this.getUsableBalances();
-        const meteoraRangeInterval = Math.ceil(
-            (this.positionRangePerSide * 10000) / (this.workingPoolBinStep as number)
-        );
+        const meteoraRangeInterval = Math.ceil((this.positionRangePerSide * 10000) / this.poolDetails.binStep);
         console.log('Adding liquidity with range interval: ', meteoraRangeInterval);
         await this.retry(() =>
             this.meteora.addLiquidity({
-                poolAddress: this.workingPoolAddress as string,
-                amount: balances[this.assetA].toString(),
-                amountB: balances[this.assetB].toString(),
+                poolAddress: this.poolAddress as string,
+                amount: balances[this.poolDetails.assetASymbol].toString(),
+                amountB: balances[this.poolDetails.assetBSymbol].toString(),
                 rangeInterval: Math.min(meteoraRangeInterval, METERORA_MAX_BINS_PER_SIDE),
             })
         );
-        this.balanceLogger.logBalances(balances[this.assetA], balances[this.assetB], 'Liquidity added to pool');
+        this.balanceLogger.logBalances(
+            balances[this.poolDetails.assetASymbol],
+            balances[this.poolDetails.assetBSymbol],
+            'Liquidity added to pool',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
+        );
 
         console.log('Collecting new opened position lower and upper bin ids..');
         let positions = await this.retry(() =>
             this.meteora.getPositionsFromPool({
-                poolAddress: this.workingPoolAddress as string,
+                poolAddress: this.poolAddress as string,
             })
         );
 
@@ -360,7 +337,7 @@ export class MeteoraOptimizer {
             console.log('No positions found, retrying...');
             positions = await this.retry(() =>
                 this.meteora.getPositionsFromPool({
-                    poolAddress: this.workingPoolAddress as string,
+                    poolAddress: this.poolAddress as string,
                 })
             );
         }
@@ -375,35 +352,47 @@ export class MeteoraOptimizer {
         const { liquidityRemoved, feesClaimed } = await this.retry(() =>
             this.meteora.removeLiquidity({
                 shouldClosePosition: true,
-                poolAddress: this.workingPoolAddress as string,
+                poolAddress: this.poolAddress as string,
             })
         );
         const positionAssetA = liquidityRemoved[0];
         const positionAssetB = liquidityRemoved[1];
         const rewardsAssetA = feesClaimed[0];
         const rewardsAssetB = feesClaimed[1];
-        this.balanceLogger.logBalances(positionAssetA, positionAssetB, 'Liquidity removed from pool');
-        this.balanceLogger.logBalances(rewardsAssetA, rewardsAssetB, 'Rewards claimed');
+        this.balanceLogger.logBalances(
+            positionAssetA,
+            positionAssetB,
+            'Liquidity removed from pool',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
+        );
+        this.balanceLogger.logBalances(
+            rewardsAssetA,
+            rewardsAssetB,
+            'Rewards claimed',
+            this.poolDetails.assetASymbol,
+            this.poolDetails.assetBSymbol
+        );
 
         // Wait for the wallet to update with the new balances
         await new Promise((resolve) => setTimeout(resolve, 5000));
 
         const newBalances = await this.getUsableBalances();
         this.balanceLogger.logAction(
-            `Withdrew liquidity and rewards from pool ${this.workingPoolAddress}: ${
-                newBalances[this.assetA]
-            } ${this.assetA}, ${newBalances[this.assetB]} ${this.assetB}`
+            `Withdrew liquidity and rewards from pool ${this.poolAddress}: ${
+                newBalances[this.poolDetails.assetASymbol]
+            } ${this.poolDetails.assetASymbol}, ${newBalances[this.poolDetails.assetBSymbol]} ${this.poolDetails.assetBSymbol}`
         );
     }
 
-    public async optimize(): Promise<boolean> {
+    public async rebalance(): Promise<boolean> {
         try {
-            if (!this.workingPoolAddress) {
+            if (!this.poolAddress) {
                 throw new Error('No working pool address found');
             }
             const activeBin: BinLiquidity = await this.retry(() =>
                 this.meteora.getActiveBin({
-                    poolAddress: this.workingPoolAddress as string,
+                    poolAddress: this.poolAddress as string,
                 })
             );
             if (activeBin.binId < this.currLowerBinId || activeBin.binId > this.currUpperBinId) {
@@ -415,8 +404,8 @@ export class MeteoraOptimizer {
                 );
 
                 await this.removeLiquidity();
-                await this.verifyNativeTokenBufferForPositions();
                 await this.rebalancePosition();
+                await this.verifyNativeTokenBufferForPositions();
                 await this.addLiquidity();
                 return true;
             } else {
@@ -427,13 +416,13 @@ export class MeteoraOptimizer {
             }
         } catch (error) {
             if (error instanceof Error && error.message.includes('No positions found in this pool')) {
-                // Position situation might be stale, initialize the optimizer
+                // Position situation might be stale, initialize the rebalancer
                 await this.loadInitialState();
             }
-            console.error('Error in optimizeMeteora:', error);
+            console.error('Error in rebalanceMeteora:', error);
             await sendAlert(
                 AlertType.ERROR,
-                `In optimizeMeteora: ${error instanceof Error ? error.message : String(error)}`
+                `In rebalanceMeteora: ${error instanceof Error ? error.message : String(error)}`
             );
             return false;
         }

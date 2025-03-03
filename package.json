@@ -1,33 +1,29 @@
 {
-  "name": "edwin-meteora-rebalancer",
+  "name": "liquidity-rebalancer",
   "version": "0.1.0",
-  "description": "Meteora yield optimization bot, built with Edwin",
+  "description": "Liquidity rebalancer bot, built with Edwin",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "start": "ts-node src/index.ts",
     "build": "pnpm format && tsup",
-    "dev": "nodemon --exec ts-node src/index.ts",
-    "test": "vitest",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "dev": "nodemon --exec ts-node examples/example.ts",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"examples/**/*.ts\"",
     "pre-commit": "lint-staged",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
-    "init-redis": "chmod +x ./scripts/init_redis.sh && ./scripts/init_redis.sh",
-    "example": "ts-node examples/example.ts",
+    "run": "ts-node examples/example.ts",
     "dev:watch": "tsup --watch"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.749.0",
     "@meteora-ag/dlmm": "^1.3.11",
     "dotenv": "^16.4.7",
-    "edwin-sdk": "0.8.0",
+    "edwin-sdk": "0.8.2",
     "redis": "^4.7.0",
     "ts-node": "^10.9.2"
   },
@@ -57,7 +53,7 @@
   },
   "keywords": [
     "defi",
-    "yield-optimization",
+    "yield-balancing", 
     "blockchain",
     "solana",
     "meteora",
@@ -68,7 +64,7 @@
     "web3"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "GPL-3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/edwin-finance/aiymx-agent.git"
