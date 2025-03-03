@@ -86,8 +86,14 @@ class CloudWatchStorage implements StorageBackend {
                 logStreamName: this.logStreamName,
             });
             await this.client.send(command);
-        } catch (error) {
-            console.error('Error creating CloudWatch log stream:', error);
+            console.log(`Created CloudWatch log stream: ${this.logStreamName}`);
+        } catch (error: any) {
+            // ResourceAlreadyExistsException is expected and not an error
+            if (error.name === 'ResourceAlreadyExistsException') {
+                console.log(`Using existing CloudWatch log stream: ${this.logStreamName}`);
+            } else {
+                console.error('Error creating CloudWatch log stream:', error);
+            }
         }
     }
 
