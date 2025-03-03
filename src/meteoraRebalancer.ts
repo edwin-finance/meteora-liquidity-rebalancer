@@ -77,7 +77,7 @@ export class MeteoraRebalancer {
      * Helper function that will retry the given async function a few times.
      * If all attempts fail, the last error is thrown.
      */
-    private async retry<T>(fn: () => Promise<T>, retries = 5, delayMs = 1000): Promise<T> {
+    private async retry<T>(fn: () => Promise<T>, retries = 5, delayMs = 5000): Promise<T> {
         let lastError: unknown;
         for (let attempt = 0; attempt < retries; attempt++) {
             try {
@@ -311,7 +311,7 @@ export class MeteoraRebalancer {
         console.log('Adding liquidity with range interval: ', meteoraRangeInterval);
         await this.retry(() =>
             this.meteora.addLiquidity({
-                poolAddress: this.poolAddress as string,
+                poolAddress: this.poolAddress,
                 amount: balances[this.poolDetails.assetASymbol].toString(),
                 amountB: balances[this.poolDetails.assetBSymbol].toString(),
                 rangeInterval: Math.min(meteoraRangeInterval, METERORA_MAX_BINS_PER_SIDE),
@@ -342,7 +342,7 @@ export class MeteoraRebalancer {
         const { liquidityRemoved, feesClaimed } = await this.retry(() =>
             this.meteora.removeLiquidity({
                 shouldClosePosition: true,
-                poolAddress: this.poolAddress as string,
+                poolAddress: this.poolAddress,
             })
         );
         const positionAssetA = liquidityRemoved[0];
@@ -382,7 +382,7 @@ export class MeteoraRebalancer {
             }
             const activeBin: BinLiquidity = await this.retry(() =>
                 this.meteora.getActiveBin({
-                    poolAddress: this.poolAddress as string,
+                    poolAddress: this.poolAddress,
                 })
             );
             if (activeBin.binId < this.currLowerBinId || activeBin.binId > this.currUpperBinId) {
