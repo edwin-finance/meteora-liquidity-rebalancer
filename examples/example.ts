@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { MeteoraOptimizer } from '../src/index';
+import { MeteoraRebalancer } from '../src/index';
 import { EdwinSolanaWallet } from 'edwin-sdk';
 
 function delay(ms: number) {
@@ -26,19 +26,19 @@ async function main() {
         process.on('SIGINT', () => cleanupAndExit());
         process.on('SIGTERM', () => cleanupAndExit());
 
-        console.log('Initializing Meteora Optimizer...');
+        console.log('Initializing Meteora Rebalancer...');
         const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-        const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.METEORA_POOL_ADDRESS);
+        const meteoraRebalancer = new MeteoraRebalancer(wallet, process.env.METEORA_POOL_ADDRESS);
         
         console.log('Loading initial state...');
-        const changedPosition = await meteoraOptimizer.loadInitialState();
+        const changedPosition = await meteoraRebalancer.loadInitialState();
         console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
 
-        // Define optimization loop as a separate function
-        async function runOptimizationLoop() {
+        // Define rebalance loop as a separate function
+        async function runRebalanceLoop() {
             try {
-                console.log('Running optimization cycle...');
-                const changedPosition = await meteoraOptimizer.optimize();
+                console.log('Running rebalance cycle...');
+                const changedPosition = await meteoraRebalancer.rebalance();
                 if (changedPosition) {
                     console.log('Position was rebalanced');
                 }
@@ -46,7 +46,7 @@ async function main() {
                 // Handle expected errors
                 if (error instanceof Error) {
                     if (error.message.includes('Bad request')) {
-                        console.error('Expected error running optimize:', error.message);
+                        console.error('Expected error running rebalance:', error.message);
                     } else {
                         throw error; // Re-throw unexpected errors
                     }
@@ -55,12 +55,12 @@ async function main() {
                 }
             }
             await delay(10 * 1000);
-            await runOptimizationLoop();
+            await runRebalanceLoop();
         }
 
-        // Start the optimization loop after a delay
-        console.log('Starting optimization loop in 10 seconds...');
-        setTimeout(runOptimizationLoop, 10 * 1000);
+        // Start the rebalance loop after a delay
+        console.log('Starting rebalance loop in 10 seconds...');
+        setTimeout(runRebalanceLoop, 10 * 1000);
     } catch (error) {
         console.error('Error in main function:', error);
         await cleanupAndExit(1);

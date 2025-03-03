@@ -16,10 +16,10 @@ type PoolDetails = {
 };
 
 /**
- * MeteoraOptimizer class for managing and optimizing liquidity positions on Meteora.
- * This class handles position creation, rebalancing, and optimization to maximize yield.
+ * MeteoraRebalancer class for managing and rebalancing liquidity positions on Meteora.
+ * This class handles position rebalancing to maintain a 50/50 balance between the two assets.
  */
-export class MeteoraOptimizer {
+export class MeteoraRebalancer {
     private poolAddress: string;
     private _poolDetails: PoolDetails | undefined;
     private currLowerBinId: number = 0;
@@ -31,7 +31,7 @@ export class MeteoraOptimizer {
     private wallet: EdwinSolanaWallet;
 
     /**
-     * Creates a new MeteoraOptimizer instance.
+     * Creates a new MeteoraRebalancer instance.
      */
     public constructor(wallet: EdwinSolanaWallet, poolAddress: string) {
         this.meteora = new MeteoraProtocol(wallet);
@@ -98,7 +98,7 @@ export class MeteoraOptimizer {
 
     private get poolDetails(): PoolDetails {
         if (!this._poolDetails) {
-            throw new Error('Pool details not initialized. Make sure to call MeteoraOptimizer.loadInitialState()');
+            throw new Error('Pool details not initialized. Make sure to call MeteoraRebalancer.loadInitialState()');
         }
         return this._poolDetails;
     }
@@ -385,7 +385,7 @@ export class MeteoraOptimizer {
         );
     }
 
-    public async optimize(): Promise<boolean> {
+    public async rebalance(): Promise<boolean> {
         try {
             if (!this.poolAddress) {
                 throw new Error('No working pool address found');
@@ -416,13 +416,13 @@ export class MeteoraOptimizer {
             }
         } catch (error) {
             if (error instanceof Error && error.message.includes('No positions found in this pool')) {
-                // Position situation might be stale, initialize the optimizer
+                // Position situation might be stale, initialize the rebalancer
                 await this.loadInitialState();
             }
-            console.error('Error in optimizeMeteora:', error);
+            console.error('Error in rebalanceMeteora:', error);
             await sendAlert(
                 AlertType.ERROR,
-                `In optimizeMeteora: ${error instanceof Error ? error.message : String(error)}`
+                `In rebalanceMeteora: ${error instanceof Error ? error.message : String(error)}`
             );
             return false;
         }
