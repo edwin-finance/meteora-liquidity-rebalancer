@@ -10,8 +10,7 @@
   "scripts": {
     "build": "pnpm format && tsup",
     "dev": "nodemon --exec ts-node examples/example.ts",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix", 
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"examples/**/*.ts\"",
     "pre-commit": "lint-staged",

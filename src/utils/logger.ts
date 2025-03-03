@@ -168,10 +168,10 @@ export class BalanceLogger {
     }
 
     public async logBalances(
-        assetABalance: number, 
-        assetBBalance: number, 
-        prefix: string, 
-        assetASymbol: string = 'Asset A', 
+        assetABalance: number,
+        assetBBalance: number,
+        prefix: string,
+        assetASymbol: string = 'Asset A',
         assetBSymbol: string = 'Asset B'
     ) {
         const timestamp = new Date().toISOString();
@@ -180,11 +180,7 @@ export class BalanceLogger {
         await this.storage.append(logEntry);
     }
 
-    public async logCurrentPrice(
-        price: number,
-        assetASymbol: string = 'Asset A',
-        assetBSymbol: string = 'Asset B'
-    ) {
+    public async logCurrentPrice(price: number, assetASymbol: string = 'Asset A', assetBSymbol: string = 'Asset B') {
         const timestamp = new Date().toISOString();
         const logEntry = `[${timestamp}] Current price: 1 ${assetASymbol} = ${price} ${assetBSymbol}\n`;
         await this.storage.append(logEntry);

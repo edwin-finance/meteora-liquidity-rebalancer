@@ -360,15 +360,15 @@ export class MeteoraOptimizer {
         const rewardsAssetA = feesClaimed[0];
         const rewardsAssetB = feesClaimed[1];
         this.balanceLogger.logBalances(
-            positionAssetA, 
-            positionAssetB, 
+            positionAssetA,
+            positionAssetB,
             'Liquidity removed from pool',
             this.poolDetails.assetASymbol,
             this.poolDetails.assetBSymbol
         );
         this.balanceLogger.logBalances(
-            rewardsAssetA, 
-            rewardsAssetB, 
+            rewardsAssetA,
+            rewardsAssetB,
             'Rewards claimed',
             this.poolDetails.assetASymbol,
             this.poolDetails.assetBSymbol
