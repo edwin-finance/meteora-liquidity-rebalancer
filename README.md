@@ -9,6 +9,14 @@ A professional-grade liquidity positioning and rebalancing bot for Meteora DeFi 
 - Optimal bin range selection for liquidity efficiency
 - Fee harvesting and position management
 - Detailed logging and reporting
+- Support for local and CloudWatch logging
+- Alert system integration for critical events
+
+## Prerequisites
+
+- Node.js 18+
+- pnpm
+- Solana wallet with SOL and tokens for the pairs you want to provide liquidity for
 
 ## Installation
 
@@ -18,29 +26,30 @@ A professional-grade liquidity positioning and rebalancing bot for Meteora DeFi 
    cd edwin-meteora-rebalancer
    ```
 
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
 ## Configuration
 
 Create a `.env` file based on the `.env.example`:
 
-```bash
-cp .env.example .env
-```
-
-Required environment variables:
+### Required environment variables:
 
 - `SOLANA_PRIVATE_KEY`: Your Solana wallet private key
 - `SOLANA_RPC_URL`: RPC URL for Solana
-- `HELIUS_API_KEY`: Helius API key for enhanced Solana data access
-- `ASSET_A`: First asset in trading pair (e.g., 'sol')
-- `ASSET_B`: Second asset in trading pair (e.g., 'usdc')
+- `METEORA_POOL_ADDRESS`: Address of the Meteora pool to provide liquidity to
 - `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g., 0.05 for ±5%)
 - `NATIVE_TOKEN_FEE_BUFFER`: Amount of SOL to reserve for transaction fees (default: 0.1)
 
-# Telegram alerts (optional)
+### Optional environment variables:
+
+#### Telegram alerts
 - `TELEGRAM_BOT_TOKEN`: Telegram bot token for alerts
 - `TELEGRAM_CHAT_ID`: Telegram chat ID for receiving alerts
 
-# CloudWatch logging (optional)
+#### CloudWatch logging
 - `USE_CLOUD_WATCH_STORAGE`: Enable CloudWatch logging (true/false)
 - `AWS_REGION`: AWS region for CloudWatch
 - `LOG_GROUP_NAME`: CloudWatch log group name
@@ -48,34 +57,31 @@ Required environment variables:
 
 ## Usage
 
-### As a standalone application
+### Running the bot locally
 
 ```bash
 # Build the application
 pnpm build
 
 # Run the example
-pnpm example
+pnpm run
 ```
 
-### As a library in another project
+### Running with Docker
 
-```typescript
-import { MeteoraOptimizer } from 'edwin-meteora-rebalancer';
-import { EdwinSolanaWallet } from 'edwin-sdk';
+```bash
+# Build the Docker image
+docker build -t edwin-meteora-rebalancer .
 
-const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-const optimizer = new MeteoraOptimizer(
-  wallet, 
-  process.env.ASSET_A, 
-  process.env.ASSET_B
-);
+# Run the container
+docker run --env-file .env edwin-meteora-rebalancer
+```
 
-// Initialize the optimizer
-await optimizer.loadInitialState();
+### Running with Docker Compose
 
-// Run optimization cycle
-const positionChanged = await optimizer.optimize();
+```bash
+# Start the service with Redis for enhanced caching
+docker-compose up -d
 ```
 
 ## Development
@@ -94,6 +100,25 @@ pnpm format
 pnpm test
 ```
 
+## Architecture
+
+The bot operates on the following principles:
+
+1. **Position Creation**: Creates a liquidity position on Meteora with optimal bin range
+2. **Monitoring**: Continuously monitors the position relative to the current market price
+3. **Rebalancing**: When the price moves outside the position's range, it rebalances by:
+   - Removing liquidity from the current position
+   - Rebalancing assets to 50/50 ratio if needed
+   - Creating a new position centered around the current price
+
+## Contributing
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a history of changes to this project.
+
 ## License
 
-GPL
+GPL-3.0

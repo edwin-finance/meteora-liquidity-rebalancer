@@ -13,42 +13,58 @@ async function cleanupAndExit(code = 0) {
 }
 
 async function main() {
-    if (!process.env.SOLANA_PRIVATE_KEY) {
-        throw new Error('SOLANA_PRIVATE_KEY is not set');
-    }
-    if (!process.env.METEORA_POOL_ADDRESS) {
-        throw new Error('METEORA_POOL_ADDRESS is not set');
-    }
-    // Set up cleanup on process termination
-    process.on('SIGINT', () => cleanupAndExit());
-    process.on('SIGTERM', () => cleanupAndExit());
+    try {
+        // Validate required environment variables
+        if (!process.env.SOLANA_PRIVATE_KEY) {
+            throw new Error('SOLANA_PRIVATE_KEY is not set');
+        }
+        if (!process.env.METEORA_POOL_ADDRESS) {
+            throw new Error('METEORA_POOL_ADDRESS is not set');
+        }
+        
+        // Set up cleanup on process termination
+        process.on('SIGINT', () => cleanupAndExit());
+        process.on('SIGTERM', () => cleanupAndExit());
 
-    const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
-    const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.METEORA_POOL_ADDRESS);
-    const changedPosition = await meteoraOptimizer.loadInitialState();
-    console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
+        console.log('Initializing Meteora Optimizer...');
+        const wallet = new EdwinSolanaWallet(process.env.SOLANA_PRIVATE_KEY);
+        const meteoraOptimizer = new MeteoraOptimizer(wallet, process.env.METEORA_POOL_ADDRESS);
+        
+        console.log('Loading initial state...');
+        const changedPosition = await meteoraOptimizer.loadInitialState();
+        console.log('Initial position loaded:', changedPosition ? 'Created new position' : 'Using existing position');
 
-    async function runOptimizationLoop() {
-        try {
-            const changedPosition = await meteoraOptimizer.optimize();
-            if (changedPosition) {
-                console.log('Position was rebalanced');
+        // Define optimization loop as a separate function
+        async function runOptimizationLoop() {
+            try {
+                console.log('Running optimization cycle...');
+                const changedPosition = await meteoraOptimizer.optimize();
+                if (changedPosition) {
+                    console.log('Position was rebalanced');
+                }
+            } catch (error) {
+                // Handle expected errors
+                if (error instanceof Error) {
+                    if (error.message.includes('Bad request')) {
+                        console.error('Expected error running optimize:', error.message);
+                    } else {
+                        throw error; // Re-throw unexpected errors
+                    }
+                } else {
+                    throw error;
+                }
             }
-        } catch (error) {
-            // Only handle expected errors here, let unexpected errors bubble up
-            if (error instanceof Error && error.message.includes('Bad request')) {
-                console.error('Expected error running optimizeMeteora:', error);
-            } else {
-                throw error;
-            }
+            await delay(10 * 1000);
+            await runOptimizationLoop();
         }
 
-        await delay(10 * 1000);
-        await runOptimizationLoop();
+        // Start the optimization loop after a delay
+        console.log('Starting optimization loop in 10 seconds...');
+        setTimeout(runOptimizationLoop, 10 * 1000);
+    } catch (error) {
+        console.error('Error in main function:', error);
+        await cleanupAndExit(1);
     }
-
-    // Start the optimization loop 10 seconds after startup
-    setTimeout(runOptimizationLoop, 10 * 1000);
 }
 
 main().catch(async (error) => {
