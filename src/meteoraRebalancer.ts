@@ -96,6 +96,34 @@ export class MeteoraRebalancer {
         throw lastError;
     }
 
+    /**
+     * Helper function that will retry getting positions until a non-empty array is returned
+     * or until max retries is reached.
+     */
+    private async retryGetPositions(retries = 5, delayMs = 5000): Promise<any[]> {
+        let lastResult: any[] = [];
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                const positions = await this.meteora.getPositionsFromPool({ poolAddress: this.poolAddress });
+                if (positions.length > 0) {
+                    return positions;
+                }
+                console.log(`Attempt ${attempt + 1}: No positions found yet, retrying in ${delayMs/1000}s...`);
+                lastResult = positions;
+            } catch (error) {
+                console.error(`Attempt ${attempt + 1} failed: ${error}`);
+                if (error instanceof Error && error.message.includes('insufficient funds')) {
+                    throw new Error('Insufficient funds');
+                }
+            }
+            
+            if (attempt < retries - 1) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+        }
+        return lastResult; // Return the last result even if empty
+    }
+
     private get poolDetails(): PoolDetails {
         if (!this._poolDetails) {
             throw new Error('Pool details not initialized. Make sure to call MeteoraRebalancer.loadInitialState()');
@@ -158,7 +186,7 @@ export class MeteoraRebalancer {
 
         console.log('Using specified pool: ', this.poolAddress, 'with bin step: ', this.poolDetails.binStep);
 
-        const positions = await this.retry(() => this.meteora.getPositionsFromPool({ poolAddress: this.poolAddress }));
+        const positions = await this.retryGetPositions();
 
         if (positions.length === 0) {
             console.log('No open positions found for pool: ', this.poolAddress);
@@ -326,13 +354,12 @@ export class MeteoraRebalancer {
         );
 
         console.log('Collecting new opened position lower and upper bin ids..');
-        const positions = await this.retry(() =>
-            this.meteora.getPositionsFromPool({
-                poolAddress: this.poolAddress,
-            }), 
-            10,
-            10000
-        );
+        const positions = await this.retryGetPositions(10, 10000);
+
+        if (positions.length === 0) {
+            console.warn('Could not find positions after adding liquidity. Will attempt to continue without bin IDs.');
+            return;
+        }
 
         const position = positions[0].positionData;
         this.currLowerBinId = position.lowerBinId;
