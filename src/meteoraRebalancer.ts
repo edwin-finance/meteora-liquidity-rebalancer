@@ -108,7 +108,7 @@ export class MeteoraRebalancer {
                 if (positions.length > 0) {
                     return positions;
                 }
-                console.log(`Attempt ${attempt + 1}: No positions found yet, retrying in ${delayMs/1000}s...`);
+                console.log(`Attempt ${attempt + 1}: No positions found yet, retrying in ${delayMs / 1000}s...`);
                 lastResult = positions;
             } catch (error) {
                 console.error(`Attempt ${attempt + 1} failed: ${error}`);
@@ -116,7 +116,7 @@ export class MeteoraRebalancer {
                     throw new Error('Insufficient funds');
                 }
             }
-            
+
             if (attempt < retries - 1) {
                 await new Promise((resolve) => setTimeout(resolve, delayMs));
             }
