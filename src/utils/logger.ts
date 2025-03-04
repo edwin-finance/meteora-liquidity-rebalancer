@@ -10,15 +10,7 @@ import { sendAlert, AlertType } from './alerts';
 
 interface StorageBackend {
     append(content: string): Promise<void>;
-    getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null>;
-}
-
-function extractBalanceFromLog(logMessage: string): [number, number] | null {
-    const match = logMessage.match(/Asset A: ([\d.]+), Asset B: ([\d.]+)/);
-    if (match) {
-        return [parseFloat(match[1]), parseFloat(match[2])];
-    }
-    return null;
+    getLastLogByPrefix(prefix: string, timestamp: Date): Promise<string | null>;
 }
 
 class LocalFileStorage implements StorageBackend {
@@ -36,22 +28,22 @@ class LocalFileStorage implements StorageBackend {
         fs.appendFileSync(this.logFile, content);
     }
 
-    async getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null> {
+    async getLastLogByPrefix(prefix: string, timestamp: Date): Promise<string | null> {
         if (!fs.existsSync(this.logFile)) {
             return null;
         }
 
         const content = fs.readFileSync(this.logFile, 'utf-8');
-        const lastBalanceLine = content
+        const lastLogLine = content
             .split('\n')
-            .filter((line) => line.includes('Asset A:') && line.includes(prefix))
+            .filter((line) => line.includes(prefix))
             .filter((line) => {
                 const logTimestamp = line.match(/\[(.*?)\]/)?.[1];
                 return logTimestamp && new Date(logTimestamp) <= timestamp;
             })
             .pop();
 
-        return lastBalanceLine ? extractBalanceFromLog(lastBalanceLine) : null;
+        return lastLogLine || null;
     }
 }
 
@@ -111,7 +103,7 @@ class CloudWatchStorage implements StorageBackend {
         await this.client.send(command);
     }
 
-    async getLastBalanceByPrefix(prefix: string, timestamp: Date): Promise<[number, number] | null> {
+    async getLastLogByPrefix(prefix: string, timestamp: Date): Promise<string | null> {
         const command = new GetLogEventsCommand({
             logGroupName: this.logGroupName,
             logStreamName: this.logStreamName,
@@ -124,24 +116,17 @@ class CloudWatchStorage implements StorageBackend {
         const matchingLogs = (response.events || [])
             .filter((event) => {
                 const message = event.message || '';
-                return (
-                    message.includes('Asset A:') &&
-                    message.includes(prefix) &&
-                    (event.timestamp || 0) <= timestamp.getTime()
-                );
+                return message.includes(prefix) && (event.timestamp || 0) <= timestamp.getTime();
             })
             .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-        if (matchingLogs.length > 0 && matchingLogs[0].message) {
-            return extractBalanceFromLog(matchingLogs[0].message);
-        }
-
-        return null;
+        return matchingLogs.length > 0 ? matchingLogs[0].message || null : null;
     }
 }
 
 export class BalanceLogger {
     private storage: StorageBackend;
+    public static TOTAL_BALANCE_PREFIX = 'Total usable balances after rebalancing';
 
     constructor() {
         const useCloudWatch = process.env.USE_CLOUD_WATCH_STORAGE === 'true';
@@ -175,10 +160,16 @@ export class BalanceLogger {
         console.log(logEntry);
     }
 
-    public async getLastBalanceByPrefix(
-        prefix: string,
-        timestamp: Date = new Date()
-    ): Promise<[number, number] | null> {
-        return await this.storage.getLastBalanceByPrefix(prefix, timestamp);
+    private extractBalanceFromLog(logMessage: string): [number, number] | null {
+        const match = logMessage.match(/(\w+): ([\d.]+), (\w+): ([\d.]+)/);
+        if (match) {
+            return [parseFloat(match[2]), parseFloat(match[4])];
+        }
+        return null;
+    }
+
+    public async getLastBalance(timestamp: Date = new Date()): Promise<[number, number] | null> {
+        const logMessage = await this.storage.getLastLogByPrefix(BalanceLogger.TOTAL_BALANCE_PREFIX, timestamp);
+        return logMessage ? this.extractBalanceFromLog(logMessage) : null;
     }
 }

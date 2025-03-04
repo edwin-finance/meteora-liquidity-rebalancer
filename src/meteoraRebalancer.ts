@@ -304,7 +304,7 @@ export class MeteoraRebalancer {
             this.balanceLogger.logBalances(
                 newBalances[this.poolDetails.assetASymbol],
                 newBalances[this.poolDetails.assetBSymbol],
-                'Total usable balances after rebalancing',
+                BalanceLogger.TOTAL_BALANCE_PREFIX,
                 this.poolDetails.assetASymbol,
                 this.poolDetails.assetBSymbol
             );
