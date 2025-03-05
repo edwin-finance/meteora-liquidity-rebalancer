@@ -1,6 +1,6 @@
 # Edwin Meteora Rebalancer
 
-A professional-grade liquidity positioning and rebalancing bot for Meteora DeFi on Solana, built with Edwin.
+A professional-grade liquidity positioning and rebalancing agent for Meteora DeFi on Solana, built with Edwin.
 
 ## Features
 
@@ -16,6 +16,7 @@ A professional-grade liquidity positioning and rebalancing bot for Meteora DeFi 
 
 - Node.js 18+
 - pnpm
+- Docker and docker-compose
 - Solana wallet with SOL and tokens for the pairs you want to provide liquidity for
 
 ## Installation
@@ -57,14 +58,17 @@ Create a `.env` file based on the `.env.example`:
 
 ## Usage
 
-### Running the bot locally
+### Running the agent locally
 
 ```bash
 # Build the application
 pnpm build
 
-# Run the example
-pnpm run
+# Start Redis database
+docker compose up -d
+
+# Run the agent
+pnpm start
 ```
 
 ### Running with Docker
@@ -73,15 +77,11 @@ pnpm run
 # Build the Docker image
 docker build -t edwin-meteora-rebalancer .
 
+# Start Redis database
+docker compose up -d
+
 # Run the container
 docker run --env-file .env edwin-meteora-rebalancer
-```
-
-### Running with Docker Compose
-
-```bash
-# Start the service with Redis for enhanced caching
-docker-compose up -d
 ```
 
 ## Development
@@ -102,7 +102,7 @@ pnpm test
 
 ## Architecture
 
-The bot operates on the following principles:
+The agent operates on the following principles:
 
 1. **Position Creation**: Creates a liquidity position on Meteora with optimal bin range
 2. **Monitoring**: Continuously monitors the position relative to the current market price

@@ -16,7 +16,7 @@
     "pre-commit": "lint-staged",
     "clean": "rimraf dist",
     "prebuild": "npm run clean",
-    "run": "ts-node examples/example.ts",
+    "start": "ts-node examples/example.ts",
     "dev:watch": "tsup --watch"
   },
   "dependencies": {
