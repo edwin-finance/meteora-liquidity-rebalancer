@@ -14,6 +14,5 @@ export default defineConfig({
         '@meteora-ag/dlmm',
         'dotenv',
         'edwin-sdk',
-        'redis',
     ],
 }); 

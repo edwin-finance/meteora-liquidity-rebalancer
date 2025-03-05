@@ -64,9 +64,6 @@ Create a `.env` file based on the `.env.example`:
 # Build the application
 pnpm build
 
-# Start Redis database
-docker compose up -d
-
 # Run the agent
 pnpm start
 ```
@@ -76,9 +73,6 @@ pnpm start
 ```bash
 # Build the Docker image
 docker build -t edwin-meteora-rebalancer .
-
-# Start Redis database
-docker compose up -d
 
 # Run the container
 docker run --env-file .env edwin-meteora-rebalancer
