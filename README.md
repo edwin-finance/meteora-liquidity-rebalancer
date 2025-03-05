@@ -38,11 +38,14 @@ Create a `.env` file based on the `.env.example`:
 
 ### Required environment variables:
 
-- `SOLANA_PRIVATE_KEY`: Your Solana wallet private key
+- `SOLANA_PRIVATE_KEY`: Your agent's Solana wallet private key. It is recommened to use a seperate wallet for your agent
 - `SOLANA_RPC_URL`: RPC URL for Solana
 - `METEORA_POOL_ADDRESS`: Address of the Meteora pool to provide liquidity to
-- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: Relative position range per side (e.g., 0.05 for ±5%)
+- `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE`: This controls the active price range for each side of the position. The narrower the range, the higher the concentration of liquidity, and hence a greater number of rebalancing operations will be required.
+(For example, a value of 0.05 represents a ±5% range from the opening price.)
 - `NATIVE_TOKEN_FEE_BUFFER`: Amount of SOL to reserve for transaction fees (default: 0.1)
+
+Pro Tip: set the value of `METEORA_POSITION_RANGE_PER_SIDE_RELATIVE` carefully to balance between collecting fees for higher liquidity but not requiring too many re-balancing operations that incur permanent losses.
 
 ### Optional environment variables:
 
