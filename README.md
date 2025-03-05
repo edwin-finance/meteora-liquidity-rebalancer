@@ -16,7 +16,6 @@ A professional-grade liquidity positioning and rebalancing agent for Meteora DeF
 
 - Node.js 18+
 - pnpm
-- Docker and docker-compose
 - Solana wallet with SOL and tokens for the pairs you want to provide liquidity for
 
 ## Installation
